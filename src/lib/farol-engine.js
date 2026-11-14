@@ -1,5 +1,5 @@
 /* ============================================================
-   FAROL FINANÃ‡AS â€” Motor Completo (Centavos Inteiros & Etapa 1)
+   FAROL FINANÇAS — Motor Completo (Centavos Inteiros & Etapa 1)
    ============================================================ */
 
 const USERS_INDEX_KEY = 'farol_financas_users_v2';
@@ -43,7 +43,7 @@ function fmtDateBR(isoDate) {
 function fmtMonthLabel(ym) {
   const [y, m] = (ym || '2026-11').split('-').map(Number);
   const months = [
-    'Janeiro', 'Fevereiro', 'MarÃ§o', 'Abril', 'Maio', 'Junho',
+    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
     'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
   ];
   return `${months[(m || 1) - 1]} de ${y}`;
@@ -56,7 +56,7 @@ function addMonthsYM(ym, delta) {
 }
 
 // ============================================================
-// ISOLAMENTO POR USUÃRIO & ESTADO EM CENTAVOS
+// ISOLAMENTO POR USUÁRIO & ESTADO EM CENTAVOS
 // ============================================================
 function getUsersIndex() {
   try {
@@ -100,11 +100,11 @@ function getDefaultState(userName = 'Meu nome') {
       { id: 'cat-moradia', name: 'Moradia', color: '#a78bfa', budgetCents: 120000, rules: ['aluguel', 'condominio', 'luz', 'energia', 'agua', 'internet'], archived: false },
       { id: 'cat-transporte', name: 'Transporte', color: '#f59e0b', budgetCents: 30000, rules: ['uber', '99', 'gasolina', 'posto', 'metro', 'estacionamento'], archived: false },
       { id: 'cat-lazer', name: 'Lazer', color: '#ec4899', budgetCents: 25000, rules: ['cinema', 'netflix', 'spotify', 'show', 'bar'], archived: false },
-      { id: 'cat-receita', name: 'SalÃ¡rio / Receitas', color: '#34d399', budgetCents: 0, rules: ['salario', 'pix recebido', 'freela', 'rendimento'], archived: false }
+      { id: 'cat-receita', name: 'Salário / Receitas', color: '#34d399', budgetCents: 0, rules: ['salario', 'pix recebido', 'freela', 'rendimento'], archived: false }
     ],
     accounts: [
       { id: 'acc-nubank', name: 'Conta Principal', type: 'Conta Corrente', initialBalanceCents: 0, limitCents: 250000, closingDay: 5, dueDay: 12 },
-      { id: 'acc-inter', name: 'CartÃ£o Black', type: 'CartÃ£o de CrÃ©dito', initialBalanceCents: 0, limitCents: 500000, closingDay: 10, dueDay: 17 }
+      { id: 'acc-inter', name: 'Cartão Black', type: 'Cartão de Crédito', initialBalanceCents: 0, limitCents: 500000, closingDay: 10, dueDay: 17 }
     ],
     transactions: [
       {
@@ -121,19 +121,19 @@ function getDefaultState(userName = 'Meu nome') {
     ],
     recurrences: [
       { id: 'rec-1', description: 'Internet Fibra', amountCents: 9990, type: 'expense', categoryId: 'cat-moradia', day: 15, active: false },
-      { id: 'rec-2', description: 'Streaming MÃºsica', amountCents: 2190, type: 'expense', categoryId: 'cat-lazer', day: 20, active: false }
+      { id: 'rec-2', description: 'Streaming Música', amountCents: 2190, type: 'expense', categoryId: 'cat-lazer', day: 20, active: false }
     ],
     goals: [
-      { id: 'goal-1', title: 'Reserva de EmergÃªncia', currentCents: 0, targetCents: 33000, deadline: '2027-06', color: '#f59e0b' },
-      { id: 'goal-2', title: 'Viagem de FÃ©rias', currentCents: 45000, targetCents: 300000, deadline: '2027-12', color: '#38b6ff' }
+      { id: 'goal-1', title: 'Reserva de Emergência', currentCents: 0, targetCents: 33000, deadline: '2027-06', color: '#f59e0b' },
+      { id: 'goal-2', title: 'Viagem de Férias', currentCents: 45000, targetCents: 300000, deadline: '2027-12', color: '#38b6ff' }
     ],
     assets: [
       {
         id: 'ast-1',
-        name: 'CDB Liquidez DiÃ¡ria',
+        name: 'CDB Liquidez Diária',
         category: 'Renda Fixa (CDB)',
         institution: 'Conta Principal',
-        liquidity: 'DiÃ¡ria',
+        liquidity: 'Diária',
         cdbPercent: 100,
         amountCents: 0,
         weeklyDeltaCents: 0
@@ -192,8 +192,8 @@ function migrateLegacyV1(v1) {
       id: a.id,
       name: a.name,
       category: a.category || 'Renda Fixa (CDB)',
-      institution: a.institution || 'InstituiÃ§Ã£o',
-      liquidity: a.liquidity || 'DiÃ¡ria',
+      institution: a.institution || 'Instituição',
+      liquidity: a.liquidity || 'Diária',
       cdbPercent: a.cdbPercent ?? 100,
       amountCents: a.amountCents !== undefined ? a.amountCents : toCents(a.amount || 0),
       weeklyDeltaCents: a.weeklyDeltaCents !== undefined ? a.weeklyDeltaCents : toCents(a.weeklyDelta || 0)
@@ -204,7 +204,7 @@ function migrateLegacyV1(v1) {
 let usersIndex = getUsersIndex();
 let state = loadState();
 
-// Estado efÃªmero de UI (filtros, seleÃ§Ã£o em lote, desfazer)
+// Estado efêmero de UI (filtros, seleção em lote, desfazer)
 let txFilter = { period: 'month', search: '', categoryId: '', accountId: '', tag: '' };
 let selectedTxIds = new Set();
 let undoSnapshot = null;
@@ -237,41 +237,41 @@ function saveState() {
 }
 
 // ============================================================
-// HELPERS DE NEGÃ“CIO (FECHAMENTO DE FATURA, SALDO, REGRAS)
+// HELPERS DE NEGÓCIO (FECHAMENTO DE FATURA, SALDO, REGRAS)
 // ============================================================
 function getCategoryById(id) {
   return state.categories.find(c => c.id === id) || { name: 'Outros', color: '#8fa3b0', rules: [], archived: false };
 }
 
 function getAccountById(id) {
-  return state.accounts.find(a => a.id === id) || { name: 'Conta PadrÃ£o', type: 'Conta Corrente', closingDay: 5, dueDay: 12, limitCents: 200000, initialBalanceCents: 0 };
+  return state.accounts.find(a => a.id === id) || { name: 'Conta Padrão', type: 'Conta Corrente', closingDay: 5, dueDay: 12, limitCents: 200000, initialBalanceCents: 0 };
 }
 
-// Regra de fechamento: compras no cartÃ£o apÃ³s o dia de fechamento vÃ£o para a fatura seguinte
+// Regra de fechamento: compras no cartão após o dia de fechamento vão para a fatura seguinte
 function getInvoiceMonthForTransaction(tx, account) {
   const ym = (tx.date || state.selectedMonth).slice(0, 7);
-  const isCard = tx.method === 'CartÃ£o de CrÃ©dito' || account?.type === 'CartÃ£o de CrÃ©dito';
+  const isCard = tx.method === 'Cartão de Crédito' || account?.type === 'Cartão de Crédito';
   if (!isCard || !account) return ym;
   const day = parseInt((tx.date || '2026-11-01').split('-')[2], 10) || 1;
   const closingDay = Number(account.closingDay) || 5;
   return day > closingDay ? addMonthsYM(ym, 1) : ym;
 }
 
-// Saldo da conta em centavos (considera entradas e saÃ­das Ã  vista/dÃ©bito)
+// Saldo da conta em centavos (considera entradas e saídas à vista/débito)
 function getAccountBalanceCents(acc) {
   let bal = Number(acc.initialBalanceCents) || 0;
   state.transactions.forEach(t => {
     if (t.accountId !== acc.id) return;
     if (t.type === 'income') {
       bal += Number(t.amountCents) || 0;
-    } else if (t.method !== 'CartÃ£o de CrÃ©dito' && acc.type !== 'CartÃ£o de CrÃ©dito') {
+    } else if (t.method !== 'Cartão de Crédito' && acc.type !== 'Cartão de Crédito') {
       bal -= Number(t.amountCents) || 0;
     }
   });
   return bal;
 }
 
-// Regra automÃ¡tica: casa descriÃ§Ã£o com palavras-chave das categorias ativas
+// Regra automática: casa descrição com palavras-chave das categorias ativas
 function matchCategoryByRules(description) {
   if (!description) return null;
   const text = description.toLowerCase();
@@ -285,7 +285,7 @@ function matchCategoryByRules(description) {
   return null;
 }
 
-// Categorias ordenadas por frequÃªncia de uso (para sugestÃ£o no lanÃ§amento rÃ¡pido)
+// Categorias ordenadas por frequência de uso (para sugestão no lançamento rápido)
 function getCategoriesSortedByUsage() {
   const counts = {};
   state.transactions.forEach(t => {
@@ -371,12 +371,12 @@ function computeMonthMetrics(ym = state.selectedMonth) {
 }
 
 // ============================================================
-// SINCRONIZAÃ‡ÃƒO AUTOMÃTICA DE RECORRÃŠNCIAS E SALÃRIO NO MÃŠS
+// SINCRONIZAÇÃO AUTOMÁTICA DE RECORRÊNCIAS E SALÁRIO NO MÊS
 // ============================================================
 function syncRecurrencesForMonth(ym = state.selectedMonth) {
   let changed = false;
 
-  // 1. SalÃ¡rio fixo automÃ¡tico
+  // 1. Salário fixo automático
   const salaryCents = Number(state.profile.monthlySalaryCents) || 0;
   if (salaryCents > 0) {
     const existingSalary = state.transactions.find(
@@ -389,7 +389,7 @@ function syncRecurrencesForMonth(ym = state.selectedMonth) {
         recurrenceId: 'rec-salary',
         type: 'income',
         amountCents: salaryCents,
-        description: 'SalÃ¡rio Mensal',
+        description: 'Salário Mensal',
         tag: 'salario',
         categoryId: 'cat-receita',
         accountId: state.accounts[0]?.id || 'acc-nubank',
@@ -403,7 +403,7 @@ function syncRecurrencesForMonth(ym = state.selectedMonth) {
     }
   }
 
-  // 2. Despesas/receitas recorrentes ativas entram automaticamente no mÃªs
+  // 2. Despesas/receitas recorrentes ativas entram automaticamente no mês
   state.recurrences.forEach(r => {
     if (!r.active) return;
     const exists = state.transactions.some(
@@ -421,7 +421,7 @@ function syncRecurrencesForMonth(ym = state.selectedMonth) {
         categoryId: r.categoryId,
         accountId: state.accounts[0]?.id || 'acc-nubank',
         date: `${ym}-${dayStr}`,
-        method: 'RecorrÃªncia AutomÃ¡tica'
+        method: 'Recorrência Automática'
       });
       changed = true;
     }
@@ -431,7 +431,7 @@ function syncRecurrencesForMonth(ym = state.selectedMonth) {
 }
 
 // ============================================================
-// RENDERIZAÃ‡ÃƒO PRINCIPAL
+// RENDERIZAÇÃO PRINCIPAL
 // ============================================================
 function renderApp() {
   syncRecurrencesForMonth(state.selectedMonth);
@@ -451,21 +451,21 @@ function renderApp() {
   });
 
   const tabTitles = {
-    'visao-geral': 'VisÃ£o geral',
-    'transacoes': 'TransaÃ§Ãµes',
-    'recorrencias': 'RecorrÃªncias',
+    'visao-geral': 'Visão geral',
+    'transacoes': 'Transações',
+    'recorrencias': 'Recorrências',
     'fluxo-caixa': 'Fluxo de caixa',
     'faturas': 'Faturas',
     'categorias': 'Categorias',
     'metas': 'Metas',
-    'patrimonio': 'PatrimÃ´nio',
-    'projecao': 'ProjeÃ§Ã£o',
+    'patrimonio': 'Patrimônio',
+    'projecao': 'Projeção',
     'contas': 'Contas'
   };
 
-  document.getElementById('page-title').textContent = tabTitles[state.currentTab] || 'VisÃ£o geral';
+  document.getElementById('page-title').textContent = tabTitles[state.currentTab] || 'Visão geral';
   document.getElementById('page-subtitle').textContent =
-    `${fmtMonthLabel(state.selectedMonth)} Â· ${state.profile.daysRemaining} dias restantes`;
+    `${fmtMonthLabel(state.selectedMonth)} · ${state.profile.daysRemaining} dias restantes`;
 
   const container = document.getElementById('view-container');
 
@@ -517,7 +517,7 @@ function renderApp() {
 }
 
 // ============================================================
-// 1. ABA: VISÃƒO GERAL
+// 1. ABA: VISÃO GERAL
 // ============================================================
 function renderVisaoGeral() {
   const m = computeMonthMetrics();
@@ -528,7 +528,7 @@ function renderVisaoGeral() {
   if (m.distribution.length === 0) {
     categoryBarsHtml = `
       <div class="cat-bar-item">
-        <div class="cat-caption">Nenhum gasto registrado neste mÃªs. Clique no botÃ£o <b>+</b> acima para lanÃ§ar.</div>
+        <div class="cat-caption">Nenhum gasto registrado neste mês. Clique no botão <b>+</b> acima para lançar.</div>
       </div>
     `;
   } else {
@@ -540,9 +540,9 @@ function renderVisaoGeral() {
       let trendHtml = '';
       if (d.prevCents > 0) {
         if (d.totalCents > d.prevCents) {
-          trendHtml = `<span title="Maior que no mÃªs anterior" style="color:var(--coral-red); font-size:12px; margin-left:4px;">â†—</span>`;
+          trendHtml = `<span title="Maior que no mês anterior" style="color:var(--coral-red); font-size:12px; margin-left:4px;">↗</span>`;
         } else if (d.totalCents < d.prevCents) {
-          trendHtml = `<span title="Menor que no mÃªs anterior" style="color:var(--green-emerald); font-size:12px; margin-left:4px;">â†˜</span>`;
+          trendHtml = `<span title="Menor que no mês anterior" style="color:var(--green-emerald); font-size:12px; margin-left:4px;">↘</span>`;
         }
       }
 
@@ -555,7 +555,7 @@ function renderVisaoGeral() {
           <div class="cat-bar-header">
             <div class="cat-name-group">
               <span style="width:24px; height:24px; border-radius:7px; background:${d.color}26; color:${d.color}; display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:700;">
-                â—
+                ●
               </span>
               <span style="font-weight:500;">${d.name}</span>
               <span class="cat-pct-badge">${d.pctLabel || (d.pct + '%')}</span>
@@ -570,7 +570,7 @@ function renderVisaoGeral() {
             <div class="cat-progress-fill" style="width:${Math.max(4, d.pct)}%; background:${d.color};"></div>
           </div>
           ${m.distribution.length === 1 && idx === 0
-            ? `<div class="cat-caption">Ãšnica categoria com gasto neste mÃªs.</div>`
+            ? `<div class="cat-caption">Única categoria com gasto neste mês.</div>`
             : ''}
         </div>
       `;
@@ -581,26 +581,26 @@ function renderVisaoGeral() {
   let accumulatedTitle = 'Gastos acumulados';
   if (state.accumulatedSubTab === 'saldo') {
     accumulatedMainVal = fmtBRL(m.partialResultCents);
-    accumulatedTitle = 'Saldo acumulado no perÃ­odo';
+    accumulatedTitle = 'Saldo acumulado no período';
   } else if (state.accumulatedSubTab === 'por-dia') {
     const dailyAvgCents = Math.round(m.expenseCents / 12);
     accumulatedMainVal = `${fmtBRL(dailyAvgCents)} / dia`;
-    accumulatedTitle = 'MÃ©dia diÃ¡ria atÃ© o dia 12';
+    accumulatedTitle = 'Média diária até o dia 12';
   }
 
   const topCat = m.distribution[0];
   const insightTitle = topCat
     ? `${topCat.name} concentra ${topCat.pct}% dos gastos`
-    : 'Seus gastos estÃ£o sob controle';
+    : 'Seus gastos estão sob controle';
   const insightDesc = topCat
-    ? `Total de ${fmtBRL(topCat.totalCents)} registrado em ${topCat.name} neste perÃ­odo. Acompanhe o limite diÃ¡rio para equilibrar o mÃªs.`
-    : 'Adicione suas receitas e despesas para receber leituras automÃ¡ticas do seu comportamento financeiro.';
+    ? `Total de ${fmtBRL(topCat.totalCents)} registrado em ${topCat.name} neste período. Acompanhe o limite diário para equilibrar o mês.`
+    : 'Adicione suas receitas e despesas para receber leituras automáticas do seu comportamento financeiro.';
 
   return `
     <section class="dashboard-row-1">
       <div class="card card-featured-cyan">
         <div class="card-featured-body">
-          <div class="card-title" style="margin-bottom:6px;">Gastos no mÃªs</div>
+          <div class="card-title" style="margin-bottom:6px;">Gastos no mês</div>
           <div>
             <span class="big-currency sensitive-val">${fmtBRL(m.expenseCents)}</span>
             <span class="currency-sub sensitive-val">/ ${fmtBRL(m.budgetCents)}</span>
@@ -617,7 +617,7 @@ function renderVisaoGeral() {
 
           <div class="budget-status-row">
             <span class="budget-status-text">
-              ${m.overBudgetCents > 0 ? 'VocÃª passou do orÃ§amento em' : 'Dentro do orÃ§amento previsto'}
+              ${m.overBudgetCents > 0 ? 'Você passou do orçamento em' : 'Dentro do orçamento previsto'}
             </span>
             <span class="badge-pill-dark sensitive-val">
               <span class="dot-red"></span>
@@ -627,7 +627,7 @@ function renderVisaoGeral() {
         </div>
 
         <div class="card-featured-footer">
-          <span>Resumo do mÃªs</span>
+          <span>Resumo do mês</span>
           <div style="display:flex; align-items:center; gap:10px;">
             <span>${m.daysRem} dias restantes</span>
             <div class="footer-dashes">
@@ -643,7 +643,7 @@ function renderVisaoGeral() {
 
       <div class="card">
         <div class="card-header-row">
-          <span class="card-title">DistribuiÃ§Ã£o de gastos</span>
+          <span class="card-title">Distribuição de gastos</span>
           <button class="card-link" id="go-to-categories-link">Categorias</button>
         </div>
 
@@ -669,15 +669,15 @@ function renderVisaoGeral() {
         <div class="partial-value ${m.partialResultCents < 0 ? 'negative' : 'positive'} sensitive-val">
           ${fmtBRL(m.partialResultCents)}
         </div>
-        <div class="vs-prev">vs R$ 0,00 mÃªs anterior</div>
+        <div class="vs-prev">vs R$ 0,00 mês anterior</div>
 
         <div class="in-out-grid">
           <div class="in-out-item">
-            <span class="in-out-label">â†— Entradas</span>
+            <span class="in-out-label">↗ Entradas</span>
             <span class="in-out-val sensitive-val">${fmtBRL(m.incomeCents)}</span>
           </div>
           <div class="in-out-item">
-            <span class="in-out-label">â†˜ SaÃ­das</span>
+            <span class="in-out-label">↘ Saídas</span>
             <span class="in-out-val sensitive-val">${fmtBRL(m.expenseCents)}</span>
           </div>
         </div>
@@ -705,16 +705,16 @@ function renderVisaoGeral() {
         </div>
 
         <div class="vs-prev sensitive-val">
-          PatrimÃ´nio total ${fmtBRL(m.totalInvestmentsCents)} Â· ${fmtBRL(m.partialResultCents)} no perÃ­odo
+          Patrimônio total ${fmtBRL(m.totalInvestmentsCents)} · ${fmtBRL(m.partialResultCents)} no período
         </div>
       </div>
 
       <div class="card">
-        <div class="card-title">Reserva de emergÃªncia</div>
+        <div class="card-title">Reserva de emergência</div>
 
         <div class="reserve-body">
           <div>
-            <div class="vs-prev" style="margin-bottom:2px;">ProteÃ§Ã£o</div>
+            <div class="vs-prev" style="margin-bottom:2px;">Proteção</div>
             <div class="reserve-Months sensitive-val">${m.reserveMonths.toFixed(1).replace('.', ',')} meses</div>
             <div class="vs-prev sensitive-val">${fmtBRL(m.reserveCurrentCents)} / ${fmtBRL(m.reserveGoalCents)}</div>
           </div>
@@ -746,7 +746,7 @@ function renderVisaoGeral() {
 
           <div class="above-budget-info">
             <div class="above-budget-val sensitive-val">${fmtBRL(m.overBudgetCents)} acima</div>
-            <div class="above-budget-sub">do orÃ§amento</div>
+            <div class="above-budget-sub">do orçamento</div>
           </div>
         </div>
 
@@ -757,8 +757,8 @@ function renderVisaoGeral() {
 
       <div class="card">
         <div class="card-header-row" style="margin-bottom:8px;">
-          <span class="card-title">Insights do mÃªs</span>
-          <span class="badge-pill-dark" style="font-weight:500;">leitura automÃ¡tica</span>
+          <span class="card-title">Insights do mês</span>
+          <span class="badge-pill-dark" style="font-weight:500;">leitura automática</span>
         </div>
 
         <div class="insight-alert-box">
@@ -771,7 +771,7 @@ function renderVisaoGeral() {
       </div>
     </section>
 
-    <!-- ROW 4: PrÃ³ximas recorrÃªncias + Faturas + Metas -->
+    <!-- ROW 4: Próximas recorrências + Faturas + Metas -->
     ${renderVisaoGeralRow4(m)}
   `;
 }
@@ -780,7 +780,7 @@ function renderVisaoGeralRow4(m) {
   const [, selMonth] = state.selectedMonth.split('-');
   const nextRecs = state.recurrences.slice(0, 3);
   const recRows = nextRecs.length === 0
-    ? `<div class="vs-prev">Nenhuma recorrÃªncia cadastrada.</div>`
+    ? `<div class="vs-prev">Nenhuma recorrência cadastrada.</div>`
     : nextRecs.map(r => {
         const cat = getCategoryById(r.categoryId);
         const dayStr = String(r.day || 10).padStart(2, '0');
@@ -798,7 +798,7 @@ function renderVisaoGeralRow4(m) {
         `;
       }).join('');
 
-  // Total de faturas em aberto no mÃªs (respeitando fechamento)
+  // Total de faturas em aberto no mês (respeitando fechamento)
   let totalFaturasOpenCents = 0;
   state.accounts.forEach(acc => {
     const meta = getInvoiceMeta(acc.id);
@@ -810,7 +810,7 @@ function renderVisaoGeralRow4(m) {
   });
   const saldoAposPagamentoCents = m.incomeCents - m.expenseCents - totalFaturasOpenCents;
 
-  // Meta prioritÃ¡ria em destaque
+  // Meta prioritária em destaque
   const topGoal = state.goals[1] || state.goals[0];
   const goalHtml = !topGoal
     ? `<div class="vs-prev">Crie uma meta na aba Metas.</div>`
@@ -820,7 +820,7 @@ function renderVisaoGeralRow4(m) {
           <div class="goal-highlight-box">
             <span class="goal-priority-pill">Prioridade</span>
             <div style="font-size:16px; font-weight:700; color:#fff;">${topGoal.title}</div>
-            <div style="font-size:11.5px; color:#c8e4f7;">PrevisÃ£o de conclusÃ£o Â· ${topGoal.deadline || '2027-12'}</div>
+            <div style="font-size:11.5px; color:#c8e4f7;">Previsão de conclusão · ${topGoal.deadline || '2027-12'}</div>
           </div>
           <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:12px;">
             <span class="sensitive-val" style="font-size:12px; font-weight:600;">${fmtBRL(topGoal.currentCents)}</span>
@@ -836,7 +836,7 @@ function renderVisaoGeralRow4(m) {
     <section class="dashboard-row-4">
       <div class="card">
         <div class="card-header-row" style="margin-bottom:8px;">
-          <span class="card-title">PrÃ³ximas recorrÃªncias</span>
+          <span class="card-title">Próximas recorrências</span>
           <button class="card-link" data-jump-tab="recorrencias">Ver todas</button>
         </div>
         ${recRows}
@@ -851,7 +851,7 @@ function renderVisaoGeralRow4(m) {
         </div>
         <div class="big-currency sensitive-val" style="margin-top:10px;">${fmtBRL(totalFaturasOpenCents)}</div>
         <div class="vs-prev sensitive-val" style="margin-top:8px;">
-          Saldo apÃ³s pagamento <b style="color:var(--text-main);">${fmtBRL(saldoAposPagamentoCents)}</b>
+          Saldo após pagamento <b style="color:var(--text-main);">${fmtBRL(saldoAposPagamentoCents)}</b>
         </div>
       </div>
 
@@ -903,7 +903,7 @@ function bindChartTooltips() {
     el.addEventListener('mouseenter', (e) => {
       const title = el.dataset.tipTitle || '';
       const val = el.dataset.tipVal || '';
-      const hidden = state.privacyMode ? 'â€¢â€¢â€¢' : val;
+      const hidden = state.privacyMode ? '•••' : val;
       tip.innerHTML = `<div class="tooltip-title">${title}</div><div class="tooltip-value">${hidden}</div>`;
       tip.classList.add('visible');
       tip.style.left = `${e.clientX}px`;
@@ -1013,13 +1013,13 @@ function buildReserveRingSvg(pct) {
 function buildAccumulatedAreaSvg(expenseCents, mode, partialResultCents = 0) {
   const color = mode === 'saldo' ? '#49b6eb' : '#f16364';
   const targetCents = mode === 'saldo' ? partialResultCents : mode === 'por-dia' ? Math.round(expenseCents / 12) : expenseCents;
-  const labelPrefix = mode === 'saldo' ? 'Saldo' : mode === 'por-dia' ? 'MÃ©dia/dia' : 'Acumulado';
+  const labelPrefix = mode === 'saldo' ? 'Saldo' : mode === 'por-dia' ? 'Média/dia' : 'Acumulado';
 
   const points = [
-    { x: 0, w: 140, title: `Dia 1â€“3 (${labelPrefix})`, valCents: 0 },
-    { x: 140, w: 140, title: `Dia 4â€“6 (${labelPrefix})`, valCents: 0 },
-    { x: 280, w: 140, title: `Dia 7â€“9 (${labelPrefix})`, valCents: Math.round(targetCents * 0.65) },
-    { x: 420, w: 140, title: `Dia 10â€“12 (${labelPrefix})`, valCents: targetCents }
+    { x: 0, w: 140, title: `Dia 1–3 (${labelPrefix})`, valCents: 0 },
+    { x: 140, w: 140, title: `Dia 4–6 (${labelPrefix})`, valCents: 0 },
+    { x: 280, w: 140, title: `Dia 7–9 (${labelPrefix})`, valCents: Math.round(targetCents * 0.65) },
+    { x: 420, w: 140, title: `Dia 10–12 (${labelPrefix})`, valCents: targetCents }
   ];
 
   const hoverZones = points.map(p => `
@@ -1040,7 +1040,7 @@ function buildAccumulatedAreaSvg(expenseCents, mode, partialResultCents = 0) {
 }
 
 // ============================================================
-// 2. ABA: TRANSAÃ‡Ã•ES (FILTROS COMBINÃVEIS + EDIÃ‡ÃƒO EM LOTE + DESFAZER)
+// 2. ABA: TRANSAÇÕES (FILTROS COMBINÁVEIS + EDIÇÃO EM LOTE + DESFAZER)
 // ============================================================
 function getFilteredTransactions() {
   const today = getTodayISO();
@@ -1115,7 +1115,7 @@ function renderTransacoesView() {
   ` : '';
 
   const rows = filtered.length === 0
-    ? `<tr><td colspan="8" style="text-align:center; color:var(--text-muted); padding:28px;">Nenhuma transaÃ§Ã£o encontrada para os filtros atuais.</td></tr>`
+    ? `<tr><td colspan="8" style="text-align:center; color:var(--text-muted); padding:28px;">Nenhuma transação encontrada para os filtros atuais.</td></tr>`
     : filtered.map(t => {
         const cat = getCategoryById(t.categoryId);
         const acc = getAccountById(t.accountId);
@@ -1134,10 +1134,10 @@ function renderTransacoesView() {
                 ${cat.name}
               </span>
             </td>
-            <td>${acc.name} Â· <span style="color:var(--text-muted); font-size:11.5px;">${t.method || 'Pix'}</span></td>
+            <td>${acc.name} · <span style="color:var(--text-muted); font-size:11.5px;">${t.method || 'Pix'}</span></td>
             <td>
               <span class="badge-type ${t.type === 'expense' ? 'expense' : 'income'}">
-                ${t.type === 'expense' ? 'SaÃ­da' : 'Entrada'}
+                ${t.type === 'expense' ? 'Saída' : 'Entrada'}
               </span>
             </td>
             <td class="sensitive-val" style="font-weight:700; color:${t.type === 'expense' ? 'var(--coral-red)' : 'var(--green-emerald)'};">
@@ -1154,20 +1154,20 @@ function renderTransacoesView() {
     <div class="card">
       <div class="section-toolbar">
         <div>
-          <h3 class="card-title" style="font-size:15px;">LanÃ§amentos & Filtros</h3>
-          <p class="vs-prev">Combine perÃ­odo, categoria, conta, tag ou texto e edite vÃ¡rias transaÃ§Ãµes em lote.</p>
+          <h3 class="card-title" style="font-size:15px;">Lançamentos & Filtros</h3>
+          <p class="vs-prev">Combine período, categoria, conta, tag ou texto e edite várias transações em lote.</p>
         </div>
-        <button class="btn-primary" id="btn-new-tx-page">+ LanÃ§amento RÃ¡pido</button>
+        <button class="btn-primary" id="btn-new-tx-page">+ Lançamento Rápido</button>
       </div>
 
       <div class="tx-filters-grid">
-        <input type="text" id="filter-search" class="form-input" placeholder="Buscar descriÃ§Ã£o ou tag..." value="${txFilter.search}" />
+        <input type="text" id="filter-search" class="form-input" placeholder="Buscar descrição ou tag..." value="${txFilter.search}" />
         <select id="filter-period" class="form-select">
-          <option value="month" ${txFilter.period === 'month' ? 'selected' : ''}>MÃªs selecionado</option>
+          <option value="month" ${txFilter.period === 'month' ? 'selected' : ''}>Mês selecionado</option>
           <option value="today" ${txFilter.period === 'today' ? 'selected' : ''}>Hoje</option>
-          <option value="7d" ${txFilter.period === '7d' ? 'selected' : ''}>Ãšltimos 7 dias</option>
-          <option value="30d" ${txFilter.period === '30d' ? 'selected' : ''}>Ãšltimos 30 dias</option>
-          <option value="all" ${txFilter.period === 'all' ? 'selected' : ''}>Todo o perÃ­odo</option>
+          <option value="7d" ${txFilter.period === '7d' ? 'selected' : ''}>Últimos 7 dias</option>
+          <option value="30d" ${txFilter.period === '30d' ? 'selected' : ''}>Últimos 30 dias</option>
+          <option value="all" ${txFilter.period === 'all' ? 'selected' : ''}>Todo o período</option>
         </select>
         <select id="filter-category" class="form-select">
           <option value="">Todas categorias</option>
@@ -1184,10 +1184,10 @@ function renderTransacoesView() {
       </div>
 
       <div class="tx-summary-strip">
-        <span><b>${filtered.length}</b> transaÃ§Ã£o(Ãµes)</span>
+        <span><b>${filtered.length}</b> transação(ões)</span>
         <div style="display:flex; gap:18px; flex-wrap:wrap;">
           <span>Entradas: <b class="sensitive-val" style="color:var(--green-emerald);">${fmtBRL(totalInCents)}</b></span>
-          <span>SaÃ­das: <b class="sensitive-val" style="color:var(--coral-red);">${fmtBRL(totalOutCents)}</b></span>
+          <span>Saídas: <b class="sensitive-val" style="color:var(--coral-red);">${fmtBRL(totalOutCents)}</b></span>
           <span>Saldo do filtro: <b class="sensitive-val">${fmtBRL(netCents)}</b></span>
         </div>
       </div>
@@ -1199,12 +1199,12 @@ function renderTransacoesView() {
           <tr>
             <th style="width:32px;"><input type="checkbox" id="tx-select-all" ${allSelected ? 'checked' : ''} /></th>
             <th>Data</th>
-            <th>DescriÃ§Ã£o / Tag</th>
+            <th>Descrição / Tag</th>
             <th>Categoria</th>
-            <th>Conta / MÃ©todo</th>
+            <th>Conta / Método</th>
             <th>Tipo</th>
             <th>Valor</th>
-            <th style="text-align:right;">AÃ§Ãµes</th>
+            <th style="text-align:right;">Ações</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -1261,7 +1261,7 @@ function bindTransacoesEvents() {
     if (selectedTxIds.size === 0) return;
     openDialogModal({
       title: label,
-      message: `Confirmar "${label}" em ${selectedTxIds.size} transaÃ§Ã£o(Ãµes)?`,
+      message: `Confirmar "${label}" em ${selectedTxIds.size} transação(ões)?`,
       confirmLabel: 'Confirmar',
       onConfirm: () => {
         undoSnapshot = JSON.parse(JSON.stringify(state.transactions));
@@ -1269,7 +1269,7 @@ function bindTransacoesEvents() {
         selectedTxIds.clear();
         saveState();
         renderApp();
-        showUndoToast(`${label} concluÃ­da.`);
+        showUndoToast(`${label} concluída.`);
       }
     });
   };
@@ -1301,7 +1301,7 @@ function bindTransacoesEvents() {
     batchTagBtn.addEventListener('click', () => {
       openDialogModal({
         title: 'Definir tag em lote',
-        message: 'Digite a tag para aplicar Ã s transaÃ§Ãµes selecionadas (deixe vazio para limpar):',
+        message: 'Digite a tag para aplicar às transações selecionadas (deixe vazio para limpar):',
         inputLabel: 'Tag',
         inputType: 'text',
         defaultValue: '',
@@ -1313,7 +1313,7 @@ function bindTransacoesEvents() {
           selectedTxIds.clear();
           saveState();
           renderApp();
-          showUndoToast('Definir tag em lote concluÃ­da.');
+          showUndoToast('Definir tag em lote concluída.');
         }
       });
     });
@@ -1322,7 +1322,7 @@ function bindTransacoesEvents() {
   const batchDelBtn = document.getElementById('btn-batch-delete');
   if (batchDelBtn) {
     batchDelBtn.addEventListener('click', () => {
-      applyBatch('Excluir transaÃ§Ãµes em lote', () => {
+      applyBatch('Excluir transações em lote', () => {
         state.transactions = state.transactions.filter(t => !selectedTxIds.has(t.id));
       });
     });
@@ -1336,13 +1336,13 @@ function bindTransacoesEvents() {
       selectedTxIds.delete(id);
       saveState();
       renderApp();
-      showUndoToast('TransaÃ§Ã£o excluÃ­da.');
+      showUndoToast('Transação excluída.');
     });
   });
 }
 
 // ============================================================
-// 3. ABA: RECORRÃŠNCIAS (LANÃ‡AMENTO AUTOMÃTICO NO MÃŠS)
+// 3. ABA: RECORRÊNCIAS (LANÇAMENTO AUTOMÁTICO NO MÊS)
 // ============================================================
 function renderRecorrenciasView() {
   const totalFixoCents = state.recurrences
@@ -1352,7 +1352,7 @@ function renderRecorrenciasView() {
   const listHtml = state.recurrences.map(r => {
     const cat = getCategoryById(r.categoryId);
     const statusPill = r.active
-      ? `<span class="status-pill paid">AutomÃ¡tica no mÃªs</span>`
+      ? `<span class="status-pill paid">Automática no mês</span>`
       : `<span class="status-pill closed">Pausada</span>`;
 
     return `
@@ -1364,7 +1364,7 @@ function renderRecorrenciasView() {
         <td class="sensitive-val" style="font-weight:700;">${fmtBRL(r.amountCents)}</td>
         <td style="text-align:right;">
           <div style="display:flex; gap:8px; justify-content:flex-end;">
-            <button class="btn-secondary" data-toggle-rec="${r.id}">${r.active ? 'Pausar' : 'Ativar AutomÃ¡tico'}</button>
+            <button class="btn-secondary" data-toggle-rec="${r.id}">${r.active ? 'Pausar' : 'Ativar Automático'}</button>
             <button class="btn-danger-ghost" data-del-rec="${r.id}">Remover</button>
           </div>
         </td>
@@ -1377,20 +1377,20 @@ function renderRecorrenciasView() {
       <div class="section-toolbar">
         <div>
           <h3 class="card-title" style="font-size:15px;">Despesas & Receitas Recorrentes</h3>
-          <p class="vs-prev">RecorrÃªncias ativas entram automaticamente em todo mÃªs selecionado. Total ativo: <b class="sensitive-val">${fmtBRL(totalFixoCents)}</b></p>
+          <p class="vs-prev">Recorrências ativas entram automaticamente em todo mês selecionado. Total ativo: <b class="sensitive-val">${fmtBRL(totalFixoCents)}</b></p>
         </div>
-        <button class="btn-primary" id="btn-add-rec">+ Nova RecorrÃªncia</button>
+        <button class="btn-primary" id="btn-add-rec">+ Nova Recorrência</button>
       </div>
 
       <table class="data-table">
         <thead>
           <tr>
             <th>Vencimento</th>
-            <th>DescriÃ§Ã£o</th>
+            <th>Descrição</th>
             <th>Categoria</th>
             <th>Status</th>
             <th>Valor Mensal</th>
-            <th style="text-align:right;">AÃ§Ãµes</th>
+            <th style="text-align:right;">Ações</th>
           </tr>
         </thead>
         <tbody>${listHtml}</tbody>
@@ -1425,7 +1425,7 @@ function bindRecorrenciasEvents() {
 }
 
 // ============================================================
-// 4. ABA: FLUXO DE CAIXA DETALHADO & SAÃšDE FINANCEIRA
+// 4. ABA: FLUXO DE CAIXA DETALHADO & SAÚDE FINANCEIRA
 // ============================================================
 function renderFluxoCaixaView() {
   const m = computeMonthMetrics();
@@ -1433,7 +1433,7 @@ function renderFluxoCaixaView() {
   const savingsRate = m.incomeCents > 0 ? Math.round((m.partialResultCents / m.incomeCents) * 100) : 0;
   const healthLabel = m.incomeCents === 0
     ? 'Sem receitas'
-    : savingsRate >= 20 ? 'SaudÃ¡vel' : savingsRate >= 0 ? 'AtenÃ§Ã£o' : 'DeficitÃ¡rio';
+    : savingsRate >= 20 ? 'Saudável' : savingsRate >= 0 ? 'Atenção' : 'Deficitário';
   const healthClass = m.incomeCents === 0 ? 'closed' : savingsRate >= 20 ? 'paid' : savingsRate >= 0 ? 'closed' : 'open';
 
   const fixedActiveOutCents = state.recurrences
@@ -1441,13 +1441,13 @@ function renderFluxoCaixaView() {
     .reduce((s, r) => s + (Number(r.amountCents) || 0), 0);
 
   const pixOutCents = m.txs
-    .filter(t => t.type === 'expense' && t.method !== 'CartÃ£o de CrÃ©dito')
+    .filter(t => t.type === 'expense' && t.method !== 'Cartão de Crédito')
     .reduce((s, t) => s + (Number(t.amountCents) || 0), 0);
   const cardOutCents = m.txs
-    .filter(t => t.type === 'expense' && t.method === 'CartÃ£o de CrÃ©dito')
+    .filter(t => t.type === 'expense' && t.method === 'Cartão de Crédito')
     .reduce((s, t) => s + (Number(t.amountCents) || 0), 0);
 
-  // HistÃ³rico dos Ãºltimos 6 meses atÃ© o mÃªs selecionado (GrÃ¡fico Vertical Agrupado SVG)
+  // Histórico dos últimos 6 meses até o mês selecionado (Gráfico Vertical Agrupado SVG)
   const shortMonths = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
   const historyMonths = [-5, -4, -3, -2, -1, 0].map(delta => {
     const ym = addMonthsYM(state.selectedMonth, delta);
@@ -1490,12 +1490,12 @@ function renderFluxoCaixaView() {
       <rect x="${(cx - barW - 3).toFixed(1)}" y="${inY.toFixed(1)}" width="${barW}" height="${inH.toFixed(1)}" rx="5"
         fill="${h.inCents > 0 ? '#34d399' : 'rgba(255,255,255,0.08)'}"
         class="chart-hover-zone"
-        data-tip-title="${h.label} Â· Entradas"
+        data-tip-title="${h.label} · Entradas"
         data-tip-val="+${fmtBRL(h.inCents)}" />
       <rect x="${(cx + 3).toFixed(1)}" y="${outY.toFixed(1)}" width="${barW}" height="${outH.toFixed(1)}" rx="5"
         fill="${h.outCents > 0 ? '#f16364' : 'rgba(255,255,255,0.08)'}"
         class="chart-hover-zone"
-        data-tip-title="${h.label} Â· SaÃ­das"
+        data-tip-title="${h.label} · Saídas"
         data-tip-val="-${fmtBRL(h.outCents)}" />
       <text x="${cx.toFixed(1)}" y="${svgH - 8}" text-anchor="middle" fill="#8fa3b0" font-size="11.5" font-weight="600">${h.label}</text>
     `;
@@ -1524,10 +1524,10 @@ function renderFluxoCaixaView() {
     .slice(0, 5);
 
   const topExpHtml = topExpenses.length === 0
-    ? `<p class="vs-prev">Nenhuma despesa registrada neste mÃªs.</p>`
+    ? `<p class="vs-prev">Nenhuma despesa registrada neste mês.</p>`
     : topExpenses.map(t => `
         <div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border-subtle); font-size:13px;">
-          <span>${fmtDateBR(t.date)} Â· <b>${t.description}</b></span>
+          <span>${fmtDateBR(t.date)} · <b>${t.description}</b></span>
           <span class="sensitive-val" style="color:var(--coral-red); font-weight:700;">-${fmtBRL(t.amountCents)}</span>
         </div>
       `).join('');
@@ -1535,12 +1535,12 @@ function renderFluxoCaixaView() {
   return `
     <div class="cdi-bar">
       <div class="cdi-control-group">
-        <span style="font-size:13px; font-weight:600;">SalÃ¡rio Mensal Fixo:</span>
+        <span style="font-size:13px; font-weight:600;">Salário Mensal Fixo:</span>
         <span class="sensitive-val" style="font-size:15px; font-weight:700; color:var(--green-emerald);">${fmtBRL(salaryCents)}</span>
         <span style="font-size:11.5px; color:var(--text-muted);">(cai automaticamente todo dia ${state.profile.salaryDay || 5})</span>
       </div>
       <button class="btn-primary" id="btn-config-salary" style="padding:7px 14px; font-size:12px;">
-        ${salaryCents > 0 ? 'âœŽ Editar SalÃ¡rio' : '+ Definir SalÃ¡rio'}
+        ${salaryCents > 0 ? '✎ Editar Salário' : '+ Definir Salário'}
       </button>
     </div>
 
@@ -1551,32 +1551,32 @@ function renderFluxoCaixaView() {
         <div class="vs-prev">Receitas em ${fmtMonthLabel(state.selectedMonth)}</div>
       </div>
       <div class="card">
-        <div class="card-title">Total de SaÃ­das</div>
+        <div class="card-title">Total de Saídas</div>
         <div class="partial-value negative sensitive-val" style="font-size:23px;">-${fmtBRL(m.expenseCents)}</div>
         <div class="vs-prev">Despesas acumuladas</div>
       </div>
       <div class="card">
-        <div class="card-title">GeraÃ§Ã£o LÃ­quida</div>
+        <div class="card-title">Geração Líquida</div>
         <div class="partial-value ${m.partialResultCents < 0 ? 'negative' : 'positive'} sensitive-val" style="font-size:23px;">${fmtBRL(m.partialResultCents)}</div>
-        <div class="vs-prev">Saldo entre entradas e saÃ­das</div>
+        <div class="vs-prev">Saldo entre entradas e saídas</div>
       </div>
       <div class="card">
         <div class="card-header-row" style="margin-bottom:6px;">
-          <span class="card-title">SaÃºde Financeira</span>
+          <span class="card-title">Saúde Financeira</span>
           <span class="status-pill ${healthClass}">${healthLabel}</span>
         </div>
         <div class="partial-value sensitive-val" style="font-size:23px; margin-top:4px;">${savingsRate}%</div>
-        <div class="vs-prev">Taxa de poupanÃ§a do mÃªs</div>
+        <div class="vs-prev">Taxa de poupança do mês</div>
       </div>
     </div>
 
     <div class="dashboard-row-2" style="grid-template-columns: 1.25fr 1fr; gap: 22px;">
       <div class="card">
         <div class="card-header-row">
-          <span class="card-title" style="font-size:15px;">EvoluÃ§Ã£o Mensal (Ãšltimos 6 Meses)</span>
+          <span class="card-title" style="font-size:15px;">Evolução Mensal (Últimos 6 Meses)</span>
           <div style="display:flex; gap:12px; font-size:11.5px; color:var(--text-secondary);">
             <span style="display:inline-flex; align-items:center; gap:5px;"><span class="cat-dot" style="background:var(--green-emerald);"></span>Entradas</span>
-            <span style="display:inline-flex; align-items:center; gap:5px;"><span class="cat-dot" style="background:var(--coral-red);"></span>SaÃ­das</span>
+            <span style="display:inline-flex; align-items:center; gap:5px;"><span class="cat-dot" style="background:var(--coral-red);"></span>Saídas</span>
           </div>
         </div>
         ${historyChartHtml}
@@ -1584,13 +1584,13 @@ function renderFluxoCaixaView() {
 
       <div style="display:flex; flex-direction:column; gap:22px;">
         <div class="card">
-          <div class="card-title" style="font-size:15px; margin-bottom:12px;">Raio-X do Fluxo no MÃªs</div>
+          <div class="card-title" style="font-size:15px; margin-bottom:12px;">Raio-X do Fluxo no Mês</div>
           <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:8px;">
-            <span>SaÃ­das Ã  vista (Pix / DÃ©bito)</span>
+            <span>Saídas à vista (Pix / Débito)</span>
             <b class="sensitive-val">${fmtBRL(pixOutCents)}</b>
           </div>
           <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:8px;">
-            <span>Compras no CartÃ£o de CrÃ©dito</span>
+            <span>Compras no Cartão de Crédito</span>
             <b class="sensitive-val">${fmtBRL(cardOutCents)}</b>
           </div>
           <div style="display:flex; justify-content:space-between; font-size:13px;">
@@ -1600,7 +1600,7 @@ function renderFluxoCaixaView() {
         </div>
 
         <div class="card">
-          <div class="card-title" style="font-size:15px; margin-bottom:8px;">Maiores SaÃ­das do MÃªs</div>
+          <div class="card-title" style="font-size:15px; margin-bottom:8px;">Maiores Saídas do Mês</div>
           ${topExpHtml}
         </div>
       </div>
@@ -1617,7 +1617,7 @@ function bindFluxoCaixaEvents() {
 }
 
 // ============================================================
-// 5. ABA: FATURAS DE CARTÃƒO (COM REGRA DE FECHAMENTO)
+// 5. ABA: FATURAS DE CARTÃO (COM REGRA DE FECHAMENTO)
 // ============================================================
 function getInvoiceMeta(accId, ym = state.selectedMonth) {
   const key = `${ym}_${accId}`;
@@ -1639,7 +1639,7 @@ function renderFaturasView() {
   let totalOpenCents = 0;
 
   const cardsHtml = state.accounts.map(acc => {
-    // Regra de fechamento: filtra todas as despesas deste cartÃ£o cuja fatura cai em state.selectedMonth
+    // Regra de fechamento: filtra todas as despesas deste cartão cuja fatura cai em state.selectedMonth
     const accTxs = state.transactions.filter(t => {
       if (t.accountId !== acc.id || t.type !== 'expense') return false;
       return getInvoiceMonthForTransaction(t, acc) === state.selectedMonth;
@@ -1664,7 +1664,7 @@ function renderFaturasView() {
       ? `<div class="fatura-tx-item" style="color:var(--text-muted);">Nenhuma compra nesta fatura (fechamento dia ${acc.closingDay || 5})</div>`
       : accTxs.map(t => `
           <div class="fatura-tx-item">
-            <span>${fmtDateBR(t.date)} Â· ${t.description}</span>
+            <span>${fmtDateBR(t.date)} · ${t.description}</span>
             <span class="sensitive-val" style="font-weight:600;">${fmtBRL(t.amountCents)}</span>
           </div>
         `).join('');
@@ -1681,14 +1681,14 @@ function renderFaturasView() {
               </div>
               <div>
                 <div class="fatura-name">${acc.name}</div>
-                <div class="fatura-dates">Fecha dia ${acc.closingDay || 5} Â· Vencimento ${dueDateStr}</div>
+                <div class="fatura-dates">Fecha dia ${acc.closingDay || 5} · Vencimento ${dueDateStr}</div>
               </div>
             </div>
 
             <div class="fatura-top-right">
               <span class="status-pill ${meta.status}">${statusLabels[meta.status] || 'Aberta'}</span>
               <button class="btn-icon-edit" data-edit-invoice="${acc.id}" title="Editar fatura">
-                âœŽ Editar
+                ✎ Editar
               </button>
             </div>
           </div>
@@ -1702,7 +1702,7 @@ function renderFaturasView() {
               <div class="cat-progress-fill" style="width:${barWidth}%; background:${barColor};"></div>
             </div>
             <div class="fatura-meta-row">
-              <span class="sensitive-val">DisponÃ­vel: <b>${fmtBRL(availableCents)}</b></span>
+              <span class="sensitive-val">Disponível: <b>${fmtBRL(availableCents)}</b></span>
               <span class="sensitive-val">Limite: ${fmtBRL(limitCents)}</span>
             </div>
           </div>
@@ -1713,7 +1713,7 @@ function renderFaturasView() {
         </div>
 
         <div class="fatura-card-actions">
-          <button class="btn-secondary" data-add-tx-account="${acc.id}">+ LanÃ§ar na fatura</button>
+          <button class="btn-secondary" data-add-tx-account="${acc.id}">+ Lançar na fatura</button>
           <button class="btn-primary" data-toggle-paid-invoice="${acc.id}" style="padding:7px 14px; font-size:12px;">
             ${meta.status === 'paid' ? 'Reabrir Fatura' : 'Marcar como Paga'}
           </button>
@@ -1727,25 +1727,25 @@ function renderFaturasView() {
   return `
     <div class="section-toolbar">
       <div>
-        <h3 class="card-title" style="font-size:16px;">Faturas & CartÃµes â€” ${fmtMonthLabel(state.selectedMonth)}</h3>
-        <p class="vs-prev">Compras apÃ³s o dia de fechamento entram automaticamente na fatura do mÃªs seguinte.</p>
+        <h3 class="card-title" style="font-size:16px;">Faturas & Cartões — ${fmtMonthLabel(state.selectedMonth)}</h3>
+        <p class="vs-prev">Compras após o dia de fechamento entram automaticamente na fatura do mês seguinte.</p>
       </div>
-      <button class="btn-primary" id="btn-new-invoice-card">+ Novo CartÃ£o / Fatura</button>
+      <button class="btn-primary" id="btn-new-invoice-card">+ Novo Cartão / Fatura</button>
     </div>
 
     <div class="faturas-summary-grid">
       <div class="card">
-        <div class="card-title">Total em Faturas do MÃªs</div>
+        <div class="card-title">Total em Faturas do Mês</div>
         <div class="partial-value negative sensitive-val" style="font-size:24px; margin-top:8px;">${fmtBRL(totalFaturasCents)}</div>
         <div class="vs-prev">Respeitando data de fechamento</div>
       </div>
       <div class="card">
-        <div class="card-title">A Pagar no PerÃ­odo</div>
+        <div class="card-title">A Pagar no Período</div>
         <div class="partial-value sensitive-val" style="font-size:24px; margin-top:8px; color:var(--amber-gold);">${fmtBRL(totalOpenCents)}</div>
         <div class="vs-prev">Faturas abertas ou fechadas</div>
       </div>
       <div class="card">
-        <div class="card-title">Limite Global DisponÃ­vel</div>
+        <div class="card-title">Limite Global Disponível</div>
         <div class="partial-value positive sensitive-val" style="font-size:24px; margin-top:8px;">${fmtBRL(totalAvailableCents)}</div>
         <div class="vs-prev sensitive-val">De ${fmtBRL(totalLimiteCents)} em limites</div>
       </div>
@@ -1787,7 +1787,7 @@ function openInvoiceModal(accountId) {
   if (!acc) return;
   const meta = isNew ? { status: 'open', adjustmentCents: 0 } : getInvoiceMeta(acc.id);
 
-  document.getElementById('modal-inv-title').textContent = isNew ? 'Novo CartÃ£o / Fatura' : `Editar Fatura â€” ${acc.name}`;
+  document.getElementById('modal-inv-title').textContent = isNew ? 'Novo Cartão / Fatura' : `Editar Fatura — ${acc.name}`;
   document.getElementById('inv-account-id').value = acc.id;
   document.getElementById('inv-name').value = acc.name;
   document.getElementById('inv-status').value = meta.status || 'open';
@@ -1803,7 +1803,7 @@ function openInvoiceModal(accountId) {
 }
 
 // ============================================================
-// 6. ABA: CATEGORIAS PERSONALIZÃVEIS COM REGRAS AUTOMÃTICAS
+// 6. ABA: CATEGORIAS PERSONALIZÁVEIS COM REGRAS AUTOMÁTICAS
 // ============================================================
 function renderCategoriasView() {
   const m = computeMonthMetrics();
@@ -1817,7 +1817,7 @@ function renderCategoriasView() {
     const pct = budgetCents > 0 ? Math.min(100, Math.round((spentCents / budgetCents) * 100)) : (spentCents > 0 ? 100 : 0);
     const rulesHtml = (cat.rules || []).length > 0
       ? (cat.rules || []).map(r => `<span class="rule-badge">${r}</span>`).join(' ')
-      : `<span style="font-size:11px; color:var(--text-muted);">Sem regras automÃ¡ticas</span>`;
+      : `<span style="font-size:11px; color:var(--text-muted);">Sem regras automáticas</span>`;
 
     return `
       <div class="card" style="${cat.archived ? 'opacity:0.65;' : ''}">
@@ -1829,7 +1829,7 @@ function renderCategoriasView() {
           </div>
           <div style="display:flex; align-items:center; gap:6px;">
             <span class="cat-pct-badge sensitive-val">${fmtBRL(spentCents)}</span>
-            <button class="btn-icon-edit" data-edit-cat="${cat.id}">âœŽ Editar</button>
+            <button class="btn-icon-edit" data-edit-cat="${cat.id}">✎ Editar</button>
           </div>
         </div>
         <div class="vs-prev sensitive-val">Teto mensal: ${fmtBRL(budgetCents)}</div>
@@ -1846,8 +1846,8 @@ function renderCategoriasView() {
   return `
     <div class="section-toolbar">
       <div>
-        <h3 class="card-title" style="font-size:16px;">Categorias & Regras AutomÃ¡ticas</h3>
-        <p class="vs-prev">Crie, edite, arquive categorias e defina palavras-chave para categorizaÃ§Ã£o automÃ¡tica.</p>
+        <h3 class="card-title" style="font-size:16px;">Categorias & Regras Automáticas</h3>
+        <p class="vs-prev">Crie, edite, arquive categorias e defina palavras-chave para categorização automática.</p>
       </div>
       <button class="btn-primary" id="btn-new-category">+ Nova Categoria</button>
     </div>
@@ -1866,7 +1866,7 @@ function openCategoryModal(catId) {
     : state.categories.find(c => c.id === catId);
   if (!cat) return;
 
-  document.getElementById('modal-cat-title').textContent = isNew ? 'Nova Categoria' : `Editar Categoria â€” ${cat.name}`;
+  document.getElementById('modal-cat-title').textContent = isNew ? 'Nova Categoria' : `Editar Categoria — ${cat.name}`;
   document.getElementById('cat-id').value = cat.id;
   document.getElementById('cat-name').value = cat.name;
   document.getElementById('cat-color').value = cat.color || '#38b6ff';
@@ -1890,7 +1890,7 @@ function bindCategoriasEvents() {
 }
 
 // ============================================================
-// 7. ABA: METAS ESTRATÃ‰GICAS
+// 7. ABA: METAS ESTRATÉGICAS
 // ============================================================
 function renderMetasView() {
   const html = state.goals.map(g => {
@@ -1943,7 +1943,7 @@ function bindMetasEvents() {
 }
 
 // ============================================================
-// 8. ABA: PATRIMÃ”NIO & INVESTIMENTOS (COM % CDB, CDI E ALOCAÃ‡ÃƒO)
+// 8. ABA: PATRIMÔNIO & INVESTIMENTOS (COM % CDB, CDI E ALOCAÇÃO)
 // ============================================================
 function calcMonthlyYieldCents(amountCents, cdbPercent, cdiAnnualRate) {
   const rateAnnual = (cdiAnnualRate / 100) * ((cdbPercent ?? 100) / 100);
@@ -1962,7 +1962,7 @@ function renderPatrimonioView() {
     'Renda Fixa': '#49b6eb',
     'Tesouro Direto': '#34d399',
     'FIIs': '#a78bfa',
-    'AÃ§Ãµes': '#f59e0b',
+    'Ações': '#f59e0b',
     'Cripto': '#ec4899',
     'Reserva / Outros': '#94a3b8'
   };
@@ -1990,10 +1990,10 @@ function renderPatrimonioView() {
         const col = classColors[cls] || '#49b6eb';
         return `<span style="display:inline-flex; align-items:center; gap:5px;"><span class="cat-dot" style="background:${col};"></span>${cls} (${pct}%)</span>`;
       }).join('')
-    : '<span style="color:var(--text-muted);">Adicione saldo para visualizar a distribuiÃ§Ã£o por classe.</span>';
+    : '<span style="color:var(--text-muted);">Adicione saldo para visualizar a distribuição por classe.</span>';
 
   const rows = state.assets.length === 0
-    ? `<tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding:28px;">Nenhum ativo cadastrado. Clique em + Novo Ativo para comeÃ§ar.</td></tr>`
+    ? `<tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding:28px;">Nenhum ativo cadastrado. Clique em + Novo Ativo para começar.</td></tr>`
     : state.assets.map(a => {
         const cdbPct = a.cdbPercent !== undefined ? Number(a.cdbPercent) : 100;
         const amtCents = Number(a.amountCents) || 0;
@@ -2004,7 +2004,7 @@ function renderPatrimonioView() {
           <tr>
             <td>
               <div style="font-weight:600;">${a.name}</div>
-              <div style="font-size:11px; color:var(--text-muted);">${a.institution || 'InstituiÃ§Ã£o'} Â· ${a.liquidity || 'DiÃ¡ria'}</div>
+              <div style="font-size:11px; color:var(--text-muted);">${a.institution || 'Instituição'} · ${a.liquidity || 'Diária'}</div>
             </td>
             <td>
               <span style="display:inline-flex; align-items:center; gap:6px;">
@@ -2014,11 +2014,11 @@ function renderPatrimonioView() {
             </td>
             <td>
               <button class="cdb-badge" data-quick-cdb="${a.id}" title="Clique para alterar a % do CDI / CDB">
-                ${cdbPct}% CDI âœŽ
+                ${cdbPct}% CDI ✎
               </button>
             </td>
             <td class="sensitive-val" style="color:var(--green-emerald); font-weight:600;">
-              +${fmtBRL(monthlyYieldCents)}/mÃªs
+              +${fmtBRL(monthlyYieldCents)}/mês
             </td>
             <td class="sensitive-val" style="font-weight:700;">${fmtBRL(amtCents)}</td>
             <td class="sensitive-val" style="color:${(a.weeklyDeltaCents || 0) >= 0 ? 'var(--green-emerald)' : 'var(--coral-red)'};">
@@ -2037,7 +2037,7 @@ function renderPatrimonioView() {
   return `
     <div class="section-toolbar">
       <div>
-        <h3 class="card-title" style="font-size:16px;">PatrimÃ´nio & Rentabilidade CDB</h3>
+        <h3 class="card-title" style="font-size:16px;">Patrimônio & Rentabilidade CDB</h3>
         <p class="vs-prev">Gerencie seus ativos, altere a % do CDI de cada CDB e acompanhe o rendimento estimado.</p>
       </div>
       <button class="btn-primary" id="btn-new-asset">+ Novo Ativo</button>
@@ -2050,7 +2050,7 @@ function renderPatrimonioView() {
         <span style="font-size:12px; color:var(--text-secondary);">% a.a.</span>
       </div>
       <div class="cdi-control-group">
-        <span style="font-size:11.5px; color:var(--text-muted);">Atalhos p/ 1Âº CDB:</span>
+        <span style="font-size:11.5px; color:var(--text-muted);">Atalhos p/ 1º CDB:</span>
         <button class="btn-secondary" data-preset-cdb="100" style="padding:5px 10px; font-size:11.5px;">100% CDI</button>
         <button class="btn-secondary" data-preset-cdb="105" style="padding:5px 10px; font-size:11.5px;">105% CDI</button>
         <button class="btn-secondary" data-preset-cdb="110" style="padding:5px 10px; font-size:11.5px;">110% CDI</button>
@@ -2060,17 +2060,17 @@ function renderPatrimonioView() {
 
     <div class="faturas-summary-grid">
       <div class="card">
-        <div class="card-title">PatrimÃ´nio Investido</div>
+        <div class="card-title">Patrimônio Investido</div>
         <div class="partial-value sensitive-val" style="font-size:24px; margin-top:8px;">${fmtBRL(m.totalInvestmentsCents)}</div>
-        <div class="vs-prev sensitive-val">VariaÃ§Ã£o na semana: ${fmtBRL(m.weeklyInvDeltaCents, true)}</div>
+        <div class="vs-prev sensitive-val">Variação na semana: ${fmtBRL(m.weeklyInvDeltaCents, true)}</div>
       </div>
       <div class="card">
         <div class="card-title">Rendimento Estimado (Bruto)</div>
-        <div class="partial-value positive sensitive-val" style="font-size:24px; margin-top:8px;">+${fmtBRL(totalMonthlyYieldCents)}<span style="font-size:13px; font-weight:400; color:var(--text-secondary);"> / mÃªs</span></div>
-        <div class="vs-prev sensitive-val">ProjeÃ§Ã£o anual: +${fmtBRL(totalAnnualYieldCents)} / ano</div>
+        <div class="partial-value positive sensitive-val" style="font-size:24px; margin-top:8px;">+${fmtBRL(totalMonthlyYieldCents)}<span style="font-size:13px; font-weight:400; color:var(--text-secondary);"> / mês</span></div>
+        <div class="vs-prev sensitive-val">Projeção anual: +${fmtBRL(totalAnnualYieldCents)} / ano</div>
       </div>
       <div class="card">
-        <div class="card-title">AlocaÃ§Ã£o da Carteira</div>
+        <div class="card-title">Alocação da Carteira</div>
         <div class="alloc-bar-track">${allocSegments}</div>
         <div class="alloc-legend">${allocLegend}</div>
       </div>
@@ -2086,7 +2086,7 @@ function renderPatrimonioView() {
             <th>Rendimento Est.</th>
             <th>Saldo Atual</th>
             <th>Semana</th>
-            <th style="text-align:right;">AÃ§Ãµes</th>
+            <th style="text-align:right;">Ações</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -2098,19 +2098,19 @@ function renderPatrimonioView() {
 function openAssetModal(assetId) {
   const isNew = !assetId;
   const asset = isNew
-    ? { id: '', name: '', category: 'Renda Fixa (CDB)', amountCents: 0, cdbPercent: 100, institution: '', liquidity: 'DiÃ¡ria' }
+    ? { id: '', name: '', category: 'Renda Fixa (CDB)', amountCents: 0, cdbPercent: 100, institution: '', liquidity: 'Diária' }
     : state.assets.find(a => a.id === assetId);
 
   if (!asset) return;
 
-  document.getElementById('modal-asset-title').textContent = isNew ? 'Novo Ativo / Investimento' : `Editar Ativo â€” ${asset.name}`;
+  document.getElementById('modal-asset-title').textContent = isNew ? 'Novo Ativo / Investimento' : `Editar Ativo — ${asset.name}`;
   document.getElementById('ast-id').value = asset.id;
   document.getElementById('ast-name').value = asset.name;
   document.getElementById('ast-category').value = asset.category === 'Renda Fixa' ? 'Renda Fixa (CDB)' : (asset.category || 'Renda Fixa (CDB)');
   document.getElementById('ast-amount').value = fromCents(asset.amountCents || 0).toFixed(2);
   document.getElementById('ast-cdb-pct').value = asset.cdbPercent ?? 100;
   document.getElementById('ast-institution').value = asset.institution || '';
-  document.getElementById('ast-liquidity').value = asset.liquidity || 'DiÃ¡ria';
+  document.getElementById('ast-liquidity').value = asset.liquidity || 'Diária';
 
   const delBtn = document.getElementById('btn-delete-asset');
   delBtn.style.display = !isNew ? 'inline-flex' : 'none';
@@ -2180,7 +2180,7 @@ function bindPatrimonioEvents() {
 }
 
 // ============================================================
-// 9. ABA: PROJEÃ‡ÃƒO ESTRATÃ‰GICA (3M / 6M / 12M, COMBO CHART & DETALHAMENTO)
+// 9. ABA: PROJEÇÃO ESTRATÉGICA (3M / 6M / 12M, COMBO CHART & DETALHAMENTO)
 // ============================================================
 let projState = { horizon: 12, deductGoals: true, selectedIdx: 0, bannerIdx: 0 };
 
@@ -2195,7 +2195,7 @@ function renderProjecaoView() {
     : 0;
 
   let runningBalanceCents = state.accounts
-    .filter(a => a.type !== 'CartÃ£o de CrÃ©dito')
+    .filter(a => a.type !== 'Cartão de Crédito')
     .reduce((s, a) => s + getAccountBalanceCents(a), 0);
 
   const horizon = projState.horizon;
@@ -2207,7 +2207,7 @@ function renderProjecaoView() {
     const monthLabel = shortMonths[(parseInt(mStr, 10) || 1) - 1];
     const mMetrics = computeMonthMetrics(ym);
 
-    // Para o mÃªs atual usa o realizado + salÃ¡rio/recorrÃªncias; para futuros projeta salÃ¡rio + parcelas jÃ¡ lanÃ§adas + recorrÃªncias ativas
+    // Para o mês atual usa o realizado + salário/recorrências; para futuros projeta salário + parcelas já lançadas + recorrências ativas
     const hasTxInMonth = mMetrics.incomeCents > 0 || mMetrics.expenseCents > 0;
     const revCents = hasTxInMonth ? mMetrics.incomeCents : salaryCents;
     const expCents = hasTxInMonth ? mMetrics.expenseCents : (mMetrics.expenseCents + fixedRecOutCents);
@@ -2233,20 +2233,20 @@ function renderProjecaoView() {
   const periodDeltaCents = finalBalanceCents - (series[0]?.startBalCents || 0);
   const activeDetail = series[Math.min(projState.selectedIdx, series.length - 1)] || series[0];
 
-  // Parcelamentos terminando nos prÃ³ximos meses
+  // Parcelamentos terminando nos próximos meses
   const endingInstallments = state.transactions.filter(t => /\(\d+\/\d+\)/.test(t.description || ''));
-  let endingMsg = 'Nenhum parcelamento ativo no cartÃ£o para encerrar nos prÃ³ximos meses.';
+  let endingMsg = 'Nenhum parcelamento ativo no cartão para encerrar nos próximos meses.';
   if (endingInstallments.length > 0) {
     const totalReleasedCents = endingInstallments.reduce((s, t) => s + (Number(t.amountCents) || 0), 0);
-    endingMsg = `${fmtBRL(totalReleasedCents)} em parcelas mapeadas nos prÃ³ximos meses.`;
+    endingMsg = `${fmtBRL(totalReleasedCents)} em parcelas mapeadas nos próximos meses.`;
   }
   const bannerSlides = [
     { title: 'Parcelamentos terminando', desc: endingMsg },
-    { title: 'Impacto das RecorrÃªncias', desc: `Suas despesas recorrentes ativas somam ${fmtBRL(fixedRecOutCents)}/mÃªs frente ao salÃ¡rio de ${fmtBRL(salaryCents)}/mÃªs.` }
+    { title: 'Impacto das Recorrências', desc: `Suas despesas recorrentes ativas somam ${fmtBRL(fixedRecOutCents)}/mês frente ao salário de ${fmtBRL(salaryCents)}/mês.` }
   ];
   const currentBanner = bannerSlides[projState.bannerIdx % bannerSlides.length];
 
-  // GrÃ¡fico Combo SVG (Barras Resultado LÃ­quido + Linha Saldo Projetado)
+  // Gráfico Combo SVG (Barras Resultado Líquido + Linha Saldo Projetado)
   const svgW = 840;
   const svgH = 220;
   const padL = 54;
@@ -2277,11 +2277,11 @@ function renderProjecaoView() {
     return `
       <rect x="${(cx - barW / 2).toFixed(1)}" y="${barY.toFixed(1)}" width="${barW.toFixed(1)}" height="${barH.toFixed(1)}" rx="5" fill="${barColor}" opacity="0.78"
         class="chart-hover-zone" data-proj-select="${idx}"
-        data-tip-title="${s.label} Â· Saldo: ${fmtBRL(s.endBalCents)}"
-        data-tip-val="LÃ­quido: ${fmtBRL(s.netCents, true)}" />
+        data-tip-title="${s.label} · Saldo: ${fmtBRL(s.endBalCents)}"
+        data-tip-val="Líquido: ${fmtBRL(s.netCents, true)}" />
       <circle cx="${cx.toFixed(1)}" cy="${yBal.toFixed(1)}" r="${idx === projState.selectedIdx ? 5.5 : 4}" fill="#49b6eb" stroke="#ffffff" stroke-width="1.5"
         class="chart-hover-zone" data-proj-select="${idx}"
-        data-tip-title="${s.label} Â· Saldo Projetado"
+        data-tip-title="${s.label} · Saldo Projetado"
         data-tip-val="${fmtBRL(s.endBalCents)}" />
       <text x="${cx.toFixed(1)}" y="${svgH - 8}" text-anchor="middle" fill="#8fa3b0" font-size="11">${s.label}</text>
     `;
@@ -2300,7 +2300,7 @@ function renderProjecaoView() {
           <div style="display:flex; align-items:center; gap:12px; margin-top:4px; flex-wrap:wrap;">
             <span class="big-currency sensitive-val" style="font-size:30px;">${fmtBRL(finalBalanceCents)}</span>
             <span class="badge-type ${periodDeltaCents >= 0 ? 'income' : 'expense'} sensitive-val">
-              ${fmtBRL(periodDeltaCents, true)} no perÃ­odo
+              ${fmtBRL(periodDeltaCents, true)} no período
             </span>
           </div>
         </div>
@@ -2312,7 +2312,7 @@ function renderProjecaoView() {
       </div>
 
       <div style="display:flex; justify-content:flex-end; gap:16px; font-size:11.5px; color:var(--text-secondary); margin-bottom:6px;">
-        <span style="display:inline-flex; align-items:center; gap:6px;"><span class="cat-dot" style="background:#34d399;"></span>Resultado LÃ­quido</span>
+        <span style="display:inline-flex; align-items:center; gap:6px;"><span class="cat-dot" style="background:#34d399;"></span>Resultado Líquido</span>
         <span style="display:inline-flex; align-items:center; gap:6px;"><span class="cat-dot" style="background:#49b6eb;"></span>Saldo Projetado</span>
       </div>
 
@@ -2327,18 +2327,18 @@ function renderProjecaoView() {
 
     <div class="proj-banner-blue" style="margin-bottom:18px;">
       <div>
-        <div style="font-size:13px; font-weight:700; margin-bottom:4px;">ðŸ‘ ${currentBanner.title}</div>
+        <div style="font-size:13px; font-weight:700; margin-bottom:4px;">👁 ${currentBanner.title}</div>
         <div class="sensitive-val" style="font-size:13.5px; opacity:0.95;">${currentBanner.desc}</div>
       </div>
       <div style="display:flex; align-items:center; gap:8px;">
-        <button class="icon-circle-btn" id="btn-proj-prev" style="width:30px; height:30px; background:rgba(255,255,255,0.18); border:none; color:#fff;">â€¹</button>
-        <button class="icon-circle-btn" id="btn-proj-next" style="width:30px; height:30px; background:rgba(255,255,255,0.18); border:none; color:#fff;">â€º</button>
+        <button class="icon-circle-btn" id="btn-proj-prev" style="width:30px; height:30px; background:rgba(255,255,255,0.18); border:none; color:#fff;">‹</button>
+        <button class="icon-circle-btn" id="btn-proj-next" style="width:30px; height:30px; background:rgba(255,255,255,0.18); border:none; color:#fff;">›</button>
       </div>
     </div>
 
     <div class="card">
       <div class="card-header-row" style="margin-bottom:8px;">
-        <span class="card-title" style="font-size:13px; font-weight:700; letter-spacing:0.04em;">DETALHAMENTO DO MÃŠS</span>
+        <span class="card-title" style="font-size:13px; font-weight:700; letter-spacing:0.04em;">DETALHAMENTO DO MÊS</span>
         <span class="badge-pill-dark">${activeDetail.label} (${activeDetail.ym})</span>
       </div>
 
@@ -2361,7 +2361,7 @@ function renderProjecaoView() {
         </div>
         <div style="display:flex; align-items:center; gap:12px;">
           <b class="sensitive-val" style="color:#a78bfa;">-${fmtBRL(activeDetail.goalsCents)}</b>
-          <label class="switch-toggle" title="Ativar/desativar reserva para metas na projeÃ§Ã£o">
+          <label class="switch-toggle" title="Ativar/desativar reserva para metas na projeção">
             <input type="checkbox" id="toggle-proj-goals" ${projState.deductGoals ? 'checked' : ''} />
             <span class="switch-slider"></span>
           </label>
@@ -2404,7 +2404,7 @@ function bindProjecaoEvents() {
 }
 
 // ============================================================
-// 10. ABA: CONTAS BANCÃRIAS (SALDO REAL EM CENTAVOS)
+// 10. ABA: CONTAS BANCÁRIAS (SALDO REAL EM CENTAVOS)
 // ============================================================
 function renderContasView() {
   const cards = state.accounts.map(a => {
@@ -2416,10 +2416,10 @@ function renderContasView() {
           <span class="cat-pct-badge">${a.type}</span>
         </div>
         <div class="big-currency sensitive-val" style="font-size:22px; margin-top:8px;">
-          ${a.type === 'CartÃ£o de CrÃ©dito' ? `Limite: ${fmtBRL(a.limitCents)}` : `Saldo: ${fmtBRL(balCents)}`}
+          ${a.type === 'Cartão de Crédito' ? `Limite: ${fmtBRL(a.limitCents)}` : `Saldo: ${fmtBRL(balCents)}`}
         </div>
         <div class="vs-prev sensitive-val" style="margin-top:6px;">
-          Limite: ${fmtBRL(a.limitCents)} Â· Fechamento dia ${a.closingDay} Â· Vencimento dia ${a.dueDay}
+          Limite: ${fmtBRL(a.limitCents)} · Fechamento dia ${a.closingDay} · Vencimento dia ${a.dueDay}
         </div>
       </div>
     `;
@@ -2427,7 +2427,7 @@ function renderContasView() {
 
   return `
     <div class="section-toolbar">
-      <h3 class="card-title" style="font-size:16px;">Minhas Contas & CartÃµes</h3>
+      <h3 class="card-title" style="font-size:16px;">Minhas Contas & Cartões</h3>
       <button class="btn-primary" id="btn-new-account">+ Adicionar Conta</button>
     </div>
     <div class="cards-grid-3">${cards}</div>
@@ -2442,7 +2442,7 @@ function bindContasEvents() {
 }
 
 // ============================================================
-// MODAIS: LANÃ‡AMENTO RÃPIDO (3 TOQUES) & PERFIL ISOLADO
+// MODAIS: LANÇAMENTO RÁPIDO (3 TOQUES) & PERFIL ISOLADO
 // ============================================================
 let manualCategoryPicked = false;
 
@@ -2482,8 +2482,8 @@ function openTransactionModal(preselectedAccountId = null) {
   }
 
   const targetAcc = getAccountById(accSelect.value);
-  if (preselectedAccountId || targetAcc.type === 'CartÃ£o de CrÃ©dito') {
-    document.getElementById('tx-method').value = 'CartÃ£o de CrÃ©dito';
+  if (preselectedAccountId || targetAcc.type === 'Cartão de Crédito') {
+    document.getElementById('tx-method').value = 'Cartão de Crédito';
   } else {
     document.getElementById('tx-method').value = 'Conta Corrente / Pix';
   }
@@ -2509,13 +2509,13 @@ function updateInstallmentUI() {
   const method = document.getElementById('tx-method').value;
   const wrap = document.getElementById('tx-installments-wrap');
   const preview = document.getElementById('tx-installment-preview');
-  const isCardExpense = type === 'expense' && method === 'CartÃ£o de CrÃ©dito';
+  const isCardExpense = type === 'expense' && method === 'Cartão de Crédito';
 
   wrap.style.display = isCardExpense ? 'flex' : 'none';
   if (isCardExpense) {
     const totalCents = toCents(document.getElementById('tx-amount').value);
     const count = parseInt(document.getElementById('tx-installments').value, 10) || 1;
-    preview.textContent = count > 1 && totalCents > 0 ? `${count}x de ${fmtBRL(Math.round(totalCents / count))}` : 'Ã€ vista';
+    preview.textContent = count > 1 && totalCents > 0 ? `${count}x de ${fmtBRL(Math.round(totalCents / count))}` : 'À vista';
   }
 }
 
@@ -2581,7 +2581,7 @@ export function initFarolApp() {
     });
   });
 
-  // Desfazer ediÃ§Ã£o em lote
+  // Desfazer edição em lote
   document.getElementById('btn-undo-batch').addEventListener('click', () => {
     if (!undoSnapshot) return;
     state.transactions = undoSnapshot;
@@ -2591,14 +2591,14 @@ export function initFarolApp() {
     renderApp();
   });
 
-  // Regra automÃ¡tica ao digitar descriÃ§Ã£o
+  // Regra automática ao digitar descrição
   document.getElementById('tx-desc').addEventListener('input', (e) => {
     if (manualCategoryPicked) return;
     const matched = matchCategoryByRules(e.target.value);
     if (matched) renderQuickCategoryChips(matched);
   });
 
-  // Troca de usuÃ¡rio isolado
+  // Troca de usuário isolado
   document.getElementById('prof-user-select').addEventListener('change', (e) => {
     usersIndex.activeUserId = e.target.value;
     saveUsersIndex(usersIndex);
@@ -2668,7 +2668,7 @@ export function initFarolApp() {
     renderApp();
   });
 
-  // Salvar EdiÃ§Ã£o / CriaÃ§Ã£o de Fatura
+  // Salvar Edição / Criação de Fatura
   document.getElementById('form-invoice').addEventListener('submit', (e) => {
     e.preventDefault();
     const accId = document.getElementById('inv-account-id').value;
@@ -2695,7 +2695,7 @@ export function initFarolApp() {
       state.accounts.push({
         id: targetId,
         name,
-        type: 'CartÃ£o de CrÃ©dito',
+        type: 'Cartão de Crédito',
         initialBalanceCents: 0,
         limitCents,
         closingDay,
@@ -2718,7 +2718,7 @@ export function initFarolApp() {
     renderApp();
   });
 
-  // Salvar Ativo / PatrimÃ´nio
+  // Salvar Ativo / Patrimônio
   document.getElementById('form-asset').addEventListener('submit', (e) => {
     e.preventDefault();
     const id = document.getElementById('ast-id').value;
@@ -2726,7 +2726,7 @@ export function initFarolApp() {
     const category = document.getElementById('ast-category').value;
     const amountCents = toCents(document.getElementById('ast-amount').value);
     const cdbPercent = parseFloat(document.getElementById('ast-cdb-pct').value);
-    const institution = document.getElementById('ast-institution').value.trim() || 'InstituiÃ§Ã£o';
+    const institution = document.getElementById('ast-institution').value.trim() || 'Instituição';
     const liquidity = document.getElementById('ast-liquidity').value;
 
     if (!name) return;
@@ -2774,7 +2774,7 @@ export function initFarolApp() {
   });
   document.getElementById('tx-amount').addEventListener('input', updateInstallmentUI);
 
-  // Salvar LanÃ§amento RÃ¡pido (atÃ© 3 toques, centavos inteiros, parcelamento e recorrÃªncia)
+  // Salvar Lançamento Rápido (até 3 toques, centavos inteiros, parcelamento e recorrência)
   document.getElementById('form-transaction').addEventListener('submit', (e) => {
     e.preventDefault();
     const type = document.getElementById('tx-type').value;
@@ -2788,7 +2788,7 @@ export function initFarolApp() {
     const date = document.getElementById('tx-date').value || getTodayISO();
     const method = document.getElementById('tx-method').value;
     const isRecurring = document.getElementById('tx-is-recurring').checked;
-    const installments = (type === 'expense' && method === 'CartÃ£o de CrÃ©dito')
+    const installments = (type === 'expense' && method === 'Cartão de Crédito')
       ? (parseInt(document.getElementById('tx-installments').value, 10) || 1)
       : 1;
 
@@ -2856,7 +2856,7 @@ export function initFarolApp() {
     renderApp();
   });
 
-  // Salvar Perfil e OrÃ§amento
+  // Salvar Perfil e Orçamento
   document.getElementById('form-profile').addEventListener('submit', (e) => {
     e.preventDefault();
     const newName = document.getElementById('prof-name').value.trim() || 'Meu nome';
@@ -2885,7 +2885,7 @@ export function initFarolApp() {
     renderApp();
   });
 
-  // Salvar Nova RecorrÃªncia
+  // Salvar Nova Recorrência
   const formRec = document.getElementById('form-recurrence');
   if (formRec) {
     formRec.addEventListener('submit', (e) => {
@@ -2912,12 +2912,12 @@ export function initFarolApp() {
     });
   }
 
-  // Salvar Nova Conta / CartÃ£o
+  // Salvar Nova Conta / Cartão
   const accTypeSelect = document.getElementById('acc-type');
   const accCardRow = document.getElementById('acc-card-dates-row');
   if (accTypeSelect && accCardRow) {
     accTypeSelect.addEventListener('change', () => {
-      accCardRow.style.display = accTypeSelect.value === 'CartÃ£o de CrÃ©dito' ? 'grid' : 'none';
+      accCardRow.style.display = accTypeSelect.value === 'Cartão de Crédito' ? 'grid' : 'none';
     });
   }
 
@@ -2953,7 +2953,7 @@ export function initFarolApp() {
 }
 
 // ============================================================
-// MODAIS AUXILIARES: RECORRÃŠNCIA, CONTA & DIÃLOGO ESTILIZADO
+// MODAIS AUXILIARES: RECORRÊNCIA, CONTA & DIÁLOGO ESTILIZADO
 // ============================================================
 function openRecurrenceModal() {
   const catSelect = document.getElementById('rec-category');

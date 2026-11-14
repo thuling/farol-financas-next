@@ -3,7 +3,7 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
     <aside class="sidebar">
       <div>
         <div class="brand">
-          <div class="brand-logo" title="Farol FinanÃ§as">
+          <div class="brand-logo" title="Farol Finanças">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
               <path d="M9 18h6"/>
               <path d="M10 22h4"/>
@@ -21,19 +21,19 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
           <li>
             <button class="nav-item active" data-tab="visao-geral">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-              <span>VisÃ£o geral</span>
+              <span>Visão geral</span>
             </button>
           </li>
           <li>
             <button class="nav-item" data-tab="transacoes">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>
-              <span>TransaÃ§Ãµes</span>
+              <span>Transações</span>
             </button>
           </li>
           <li>
             <button class="nav-item" data-tab="recorrencias">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
-              <span>RecorrÃªncias</span>
+              <span>Recorrências</span>
             </button>
           </li>
           <li>
@@ -56,7 +56,7 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
           </li>
         </ul>
 
-        <div class="nav-section-label" style="margin-top: 10px;">VISÃƒO ESTRATÃ‰GICA</div>
+        <div class="nav-section-label" style="margin-top: 10px;">VISÃO ESTRATÉGICA</div>
         <ul class="nav-list" id="nav-estrategica">
           <li>
             <button class="nav-item" data-tab="metas">
@@ -67,13 +67,13 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
           <li>
             <button class="nav-item" data-tab="patrimonio">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" x2="21" y1="22" y2="22"/><line x1="6" x2="6" y1="18" y2="11"/><line x1="10" x2="10" y1="18" y2="11"/><line x1="14" x2="14" y1="18" y2="11"/><line x1="18" x2="18" y1="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>
-              <span>PatrimÃ´nio</span>
+              <span>Patrimônio</span>
             </button>
           </li>
           <li>
             <button class="nav-item" data-tab="projecao">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
-              <span>ProjeÃ§Ã£o</span>
+              <span>Projeção</span>
             </button>
           </li>
           <li>
@@ -85,8 +85,8 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
         </ul>
       </div>
 
-      <!-- Perfil do UsuÃ¡rio -->
-      <div class="sidebar-footer" id="profile-trigger" title="Clique para editar seu perfil e orÃ§amento mensal">
+      <!-- Perfil do Usuário -->
+      <div class="sidebar-footer" id="profile-trigger" title="Clique para editar seu perfil e orçamento mensal">
         <div class="avatar-circle" id="user-avatar">M</div>
         <div class="user-meta">
           <span class="user-name" id="user-name-label">Meu nome</span>
@@ -100,33 +100,33 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
       <!-- Topbar -->
       <header class="topbar">
         <div>
-          <h1 class="page-title" id="page-title">VisÃ£o geral</h1>
-          <p class="page-subtitle" id="page-subtitle">Novembro de 2026 Â· 18 dias restantes</p>
+          <h1 class="page-title" id="page-title">Visão geral</h1>
+          <p class="page-subtitle" id="page-subtitle">Novembro de 2026 · 18 dias restantes</p>
         </div>
 
         <div class="topbar-actions">
-          <!-- Seletor de MÃªs -->
-          <select id="month-selector" class="month-pill" aria-label="Selecionar mÃªs">
-            <option value="2026-09">setembro de 2026 â–¾</option>
-            <option value="2026-10">outubro de 2026 â–¾</option>
-            <option value="2026-11" selected>novembro de 2026 â–¾</option>
-            <option value="2026-12">dezembro de 2026 â–¾</option>
-            <option value="2027-01">janeiro de 2027 â–¾</option>
-            <option value="2027-02">fevereiro de 2027 â–¾</option>
-            <option value="2027-03">marÃ§o de 2027 â–¾</option>
-            <option value="2027-04">abril de 2027 â–¾</option>
-            <option value="2027-05">maio de 2027 â–¾</option>
-            <option value="2027-06">junho de 2027 â–¾</option>
+          <!-- Seletor de Mês -->
+          <select id="month-selector" class="month-pill" aria-label="Selecionar mês">
+            <option value="2026-09">setembro de 2026 ▾</option>
+            <option value="2026-10">outubro de 2026 ▾</option>
+            <option value="2026-11" selected>novembro de 2026 ▾</option>
+            <option value="2026-12">dezembro de 2026 ▾</option>
+            <option value="2027-01">janeiro de 2027 ▾</option>
+            <option value="2027-02">fevereiro de 2027 ▾</option>
+            <option value="2027-03">março de 2027 ▾</option>
+            <option value="2027-04">abril de 2027 ▾</option>
+            <option value="2027-05">maio de 2027 ▾</option>
+            <option value="2027-06">junho de 2027 ▾</option>
           </select>
 
-          <!-- BotÃ£o Tema Claro / Escuro -->
+          <!-- Botão Tema Claro / Escuro -->
           <button class="icon-circle-btn" id="theme-toggle-btn" title="Alternar tema claro/escuro" aria-label="Alternar tema">
             <svg id="theme-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>
             </svg>
           </button>
 
-          <!-- BotÃ£o Ocultar/Mostrar Valores -->
+          <!-- Botão Ocultar/Mostrar Valores -->
           <button class="icon-circle-btn" id="privacy-toggle-btn" title="Mostrar/Ocultar valores">
             <svg id="eye-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
@@ -134,22 +134,22 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
             </svg>
           </button>
 
-          <!-- BotÃ£o Nova TransaÃ§Ã£o (+) -->
-          <button class="add-circle-btn" id="quick-add-btn" title="Adicionar lanÃ§amento (+)">+</button>
+          <!-- Botão Nova Transação (+) -->
+          <button class="add-circle-btn" id="quick-add-btn" title="Adicionar lançamento (+)">+</button>
         </div>
       </header>
 
-      <!-- Container DinÃ¢mico das Abas -->
+      <!-- Container Dinâmico das Abas -->
       <div id="view-container"></div>
     </main>
   </div>
 
-  <!-- ==================== MODAL: LANÃ‡AMENTO RÃPIDO (ATÃ‰ 3 TOQUES) ==================== -->
+  <!-- ==================== MODAL: LANÇAMENTO RÁPIDO (ATÉ 3 TOQUES) ==================== -->
   <div class="modal-backdrop" id="modal-transaction">
     <div class="modal-card">
       <div class="modal-header">
-        <h3 class="modal-title" id="modal-tx-title">LanÃ§amento RÃ¡pido</h3>
-        <button type="button" class="modal-close-btn" data-close-modal="modal-transaction" aria-label="Fechar">âœ•</button>
+        <h3 class="modal-title" id="modal-tx-title">Lançamento Rápido</h3>
+        <button type="button" class="modal-close-btn" data-close-modal="modal-transaction" aria-label="Fechar">✕</button>
       </div>
       <form id="form-transaction">
         <input type="hidden" id="tx-id" />
@@ -159,7 +159,7 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
           <span class="quick-amount-prefix">R$</span>
           <input type="number" step="0.01" min="0.01" id="tx-amount" class="quick-amount-input" placeholder="0,00" required />
           <select id="tx-type" class="form-select" style="width:auto; min-width:110px;">
-            <option value="expense">SaÃ­da</option>
+            <option value="expense">Saída</option>
             <option value="income">Entrada</option>
           </select>
         </div>
@@ -170,10 +170,10 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
         </div>
 
         <details class="quick-more-details" id="quick-more-details">
-          <summary>+ Mais opÃ§Ãµes (descriÃ§Ã£o, tag, conta, parcelas, recorrÃªncia)</summary>
+          <summary>+ Mais opções (descrição, tag, conta, parcelas, recorrência)</summary>
           <div class="form-row-2">
             <div class="form-group">
-              <label class="form-label">DescriÃ§Ã£o (opcional)</label>
+              <label class="form-label">Descrição (opcional)</label>
               <input type="text" id="tx-desc" class="form-input" placeholder="Ex: iFood / Mercado" />
             </div>
             <div class="form-group">
@@ -183,7 +183,7 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
           </div>
           <div class="form-row-2">
             <div class="form-group">
-              <label class="form-label">Conta / CartÃ£o</label>
+              <label class="form-label">Conta / Cartão</label>
               <select id="tx-account" class="form-select" required></select>
             </div>
             <div class="form-group">
@@ -193,17 +193,17 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
           </div>
           <div class="form-row-2">
             <div class="form-group">
-              <label class="form-label">MÃ©todo</label>
+              <label class="form-label">Método</label>
               <select id="tx-method" class="form-select">
-                <option value="Conta Corrente / Pix">Pix / DÃ©bito</option>
-                <option value="CartÃ£o de CrÃ©dito">CartÃ£o de CrÃ©dito</option>
+                <option value="Conta Corrente / Pix">Pix / Débito</option>
+                <option value="Cartão de Crédito">Cartão de Crédito</option>
               </select>
             </div>
             <div class="form-group" id="tx-installments-wrap" style="display:none;">
               <label class="form-label">Parcelas</label>
               <div style="display:flex; align-items:center; gap:8px;">
                 <select id="tx-installments" class="form-select" style="flex:1;">
-                  <option value="1">1x (Ã€ vista)</option>
+                  <option value="1">1x (À vista)</option>
                   <option value="2">2x</option>
                   <option value="3">3x</option>
                   <option value="4">4x</option>
@@ -222,7 +222,7 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
           </div>
           <label style="display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--text-secondary); cursor:pointer; margin-top:4px;">
             <input type="checkbox" id="tx-is-recurring" />
-            Repetir mensalmente (salvar em RecorrÃªncias)
+            Repetir mensalmente (salvar em Recorrências)
           </label>
         </details>
 
@@ -234,21 +234,21 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
     </div>
   </div>
 
-  <!-- ==================== MODAL: PERFIL & ORÃ‡AMENTO ==================== -->
+  <!-- ==================== MODAL: PERFIL & ORÇAMENTO ==================== -->
   <div class="modal-backdrop" id="modal-profile">
     <div class="modal-card">
       <div class="modal-header">
-        <h3 class="modal-title">ConfiguraÃ§Ãµes & OrÃ§amento</h3>
-        <button type="button" class="modal-close-btn" data-close-modal="modal-profile" aria-label="Fechar">âœ•</button>
+        <h3 class="modal-title">Configurações & Orçamento</h3>
+        <button type="button" class="modal-close-btn" data-close-modal="modal-profile" aria-label="Fechar">✕</button>
       </div>
       <form id="form-profile">
         <div class="form-row-2">
           <div class="form-group">
-            <label class="form-label">UsuÃ¡rio Ativo (dados isolados)</label>
+            <label class="form-label">Usuário Ativo (dados isolados)</label>
             <select id="prof-user-select" class="form-select"></select>
           </div>
           <div class="form-group">
-            <label class="form-label">Novo UsuÃ¡rio</label>
+            <label class="form-label">Novo Usuário</label>
             <div style="display:flex; gap:6px;">
               <input type="text" id="prof-new-user" class="form-input" placeholder="Ex: Maria" />
               <button type="button" class="btn-secondary" id="btn-create-user" style="white-space:nowrap;">+ Criar</button>
@@ -261,13 +261,13 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
             <input type="text" id="prof-name" class="form-input" required />
           </div>
           <div class="form-group">
-            <label class="form-label">Plano / SubtÃ­tulo</label>
+            <label class="form-label">Plano / Subtítulo</label>
             <input type="text" id="prof-plan" class="form-input" required />
           </div>
         </div>
         <div class="form-row-2">
           <div class="form-group">
-            <label class="form-label">SalÃ¡rio Mensal Fixo (R$)</label>
+            <label class="form-label">Salário Mensal Fixo (R$)</label>
             <input type="number" step="0.01" min="0" id="prof-salary" class="form-input" placeholder="0,00" />
           </div>
           <div class="form-group">
@@ -277,11 +277,11 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
         </div>
         <div class="form-row-2">
           <div class="form-group">
-            <label class="form-label">OrÃ§amento Mensal (R$)</label>
+            <label class="form-label">Orçamento Mensal (R$)</label>
             <input type="number" step="0.01" min="0" id="prof-budget" class="form-input" required />
           </div>
           <div class="form-group">
-            <label class="form-label">Meta Reserva EmergÃªncia (R$)</label>
+            <label class="form-label">Meta Reserva Emergência (R$)</label>
             <input type="number" step="0.01" min="1" id="prof-reserve-goal" class="form-input" required />
           </div>
         </div>
@@ -296,19 +296,19 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
     </div>
   </div>
 
-  <!-- ==================== MODAL: EDITAR FATURA / CARTÃƒO ==================== -->
+  <!-- ==================== MODAL: EDITAR FATURA / CARTÃO ==================== -->
   <div class="modal-backdrop" id="modal-invoice">
     <div class="modal-card">
       <div class="modal-header">
         <h3 class="modal-title" id="modal-inv-title">Editar Fatura</h3>
-        <button type="button" class="modal-close-btn" data-close-modal="modal-invoice" aria-label="Fechar">âœ•</button>
+        <button type="button" class="modal-close-btn" data-close-modal="modal-invoice" aria-label="Fechar">✕</button>
       </div>
       <form id="form-invoice">
         <input type="hidden" id="inv-account-id" />
         <div class="form-row-2">
           <div class="form-group">
-            <label class="form-label">Nome do CartÃ£o / Conta</label>
-            <input type="text" id="inv-name" class="form-input" placeholder="Ex: CartÃ£o Black" required />
+            <label class="form-label">Nome do Cartão / Conta</label>
+            <input type="text" id="inv-name" class="form-input" placeholder="Ex: Cartão Black" required />
           </div>
           <div class="form-group">
             <label class="form-label">Status da Fatura</label>
@@ -340,7 +340,7 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
           </div>
         </div>
         <div class="modal-actions-split">
-          <button type="button" class="btn-danger-ghost" id="btn-delete-invoice">Excluir CartÃ£o</button>
+          <button type="button" class="btn-danger-ghost" id="btn-delete-invoice">Excluir Cartão</button>
           <div style="display:flex; gap:8px;">
             <button type="button" class="btn-secondary" data-close-modal="modal-invoice">Cancelar</button>
             <button type="submit" class="btn-primary">Salvar Fatura</button>
@@ -350,19 +350,19 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
     </div>
   </div>
 
-  <!-- ==================== MODAL: ATIVO / PATRIMÃ”NIO ==================== -->
+  <!-- ==================== MODAL: ATIVO / PATRIMÔNIO ==================== -->
   <div class="modal-backdrop" id="modal-asset">
     <div class="modal-card">
       <div class="modal-header">
         <h3 class="modal-title" id="modal-asset-title">Editar Ativo</h3>
-        <button type="button" class="modal-close-btn" data-close-modal="modal-asset" aria-label="Fechar">âœ•</button>
+        <button type="button" class="modal-close-btn" data-close-modal="modal-asset" aria-label="Fechar">✕</button>
       </div>
       <form id="form-asset">
         <input type="hidden" id="ast-id" />
         <div class="form-row-2">
           <div class="form-group">
             <label class="form-label">Nome do Ativo</label>
-            <input type="text" id="ast-name" class="form-input" placeholder="Ex: CDB Liquidez DiÃ¡ria" required />
+            <input type="text" id="ast-name" class="form-input" placeholder="Ex: CDB Liquidez Diária" required />
           </div>
           <div class="form-group">
             <label class="form-label">Classe</label>
@@ -370,7 +370,7 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
               <option value="Renda Fixa (CDB)">Renda Fixa (CDB)</option>
               <option value="Tesouro Direto">Tesouro Direto</option>
               <option value="FIIs">FIIs</option>
-              <option value="AÃ§Ãµes">AÃ§Ãµes</option>
+              <option value="Ações">Ações</option>
               <option value="Cripto">Cripto</option>
               <option value="Reserva / Outros">Reserva / Outros</option>
             </select>
@@ -388,13 +388,13 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
         </div>
         <div class="form-row-2">
           <div class="form-group">
-            <label class="form-label">InstituiÃ§Ã£o</label>
+            <label class="form-label">Instituição</label>
             <input type="text" id="ast-institution" class="form-input" placeholder="Ex: Nubank, Inter, XP" />
           </div>
           <div class="form-group">
             <label class="form-label">Liquidez</label>
             <select id="ast-liquidity" class="form-select">
-              <option value="DiÃ¡ria">Liquidez DiÃ¡ria</option>
+              <option value="Diária">Liquidez Diária</option>
               <option value="D+1">D+1</option>
               <option value="D+30">D+30</option>
               <option value="No Vencimento">No Vencimento</option>
@@ -412,12 +412,12 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
     </div>
   </div>
 
-  <!-- ==================== MODAL: CATEGORIA & REGRAS AUTOMÃTICAS ==================== -->
+  <!-- ==================== MODAL: CATEGORIA & REGRAS AUTOMÁTICAS ==================== -->
   <div class="modal-backdrop" id="modal-category">
     <div class="modal-card">
       <div class="modal-header">
         <h3 class="modal-title" id="modal-cat-title">Nova Categoria</h3>
-        <button type="button" class="modal-close-btn" data-close-modal="modal-category" aria-label="Fechar">âœ•</button>
+        <button type="button" class="modal-close-btn" data-close-modal="modal-category" aria-label="Fechar">✕</button>
       </div>
       <form id="form-category">
         <input type="hidden" id="cat-id" />
@@ -432,11 +432,11 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">OrÃ§amento Mensal (R$)</label>
+          <label class="form-label">Orçamento Mensal (R$)</label>
           <input type="number" step="0.01" min="0" id="cat-budget" class="form-input" placeholder="150,00" required />
         </div>
         <div class="form-group">
-          <label class="form-label">Regras AutomÃ¡ticas (palavras-chave separadas por vÃ­rgula)</label>
+          <label class="form-label">Regras Automáticas (palavras-chave separadas por vírgula)</label>
           <input type="text" id="cat-rules" class="form-input" placeholder="Ex: ifood, rappi, lanche, pizza" />
         </div>
         <div class="modal-actions-split">
@@ -450,12 +450,12 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
     </div>
   </div>
 
-  <!-- ==================== MODAL: NOVA RECORRÃŠNCIA ==================== -->
+  <!-- ==================== MODAL: NOVA RECORRÊNCIA ==================== -->
   <div class="modal-backdrop" id="modal-recurrence">
     <div class="modal-card">
       <div class="modal-header">
-        <h3 class="modal-title">Nova RecorrÃªncia</h3>
-        <button type="button" class="modal-close-btn" data-close-modal="modal-recurrence" aria-label="Fechar">âœ•</button>
+        <h3 class="modal-title">Nova Recorrência</h3>
+        <button type="button" class="modal-close-btn" data-close-modal="modal-recurrence" aria-label="Fechar">✕</button>
       </div>
       <form id="form-recurrence">
         <div class="form-group">
@@ -476,7 +476,7 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
           <div class="form-group">
             <label class="form-label">Tipo</label>
             <select id="rec-type" class="form-select">
-              <option value="expense">SaÃ­da (Despesa)</option>
+              <option value="expense">Saída (Despesa)</option>
               <option value="income">Entrada (Receita)</option>
             </select>
           </div>
@@ -487,30 +487,30 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
         </div>
         <div class="modal-actions">
           <button type="button" class="btn-secondary" data-close-modal="modal-recurrence">Cancelar</button>
-          <button type="submit" class="btn-primary">Salvar RecorrÃªncia</button>
+          <button type="submit" class="btn-primary">Salvar Recorrência</button>
         </div>
       </form>
     </div>
   </div>
 
-  <!-- ==================== MODAL: NOVA CONTA / CARTÃƒO ==================== -->
+  <!-- ==================== MODAL: NOVA CONTA / CARTÃO ==================== -->
   <div class="modal-backdrop" id="modal-account">
     <div class="modal-card">
       <div class="modal-header">
-        <h3 class="modal-title">Nova Conta ou CartÃ£o</h3>
-        <button type="button" class="modal-close-modal modal-close-btn" data-close-modal="modal-account" aria-label="Fechar">âœ•</button>
+        <h3 class="modal-title">Nova Conta ou Cartão</h3>
+        <button type="button" class="modal-close-modal modal-close-btn" data-close-modal="modal-account" aria-label="Fechar">✕</button>
       </div>
       <form id="form-account">
         <div class="form-row-2">
           <div class="form-group">
-            <label class="form-label">Nome do Banco ou CartÃ£o</label>
-            <input type="text" id="acc-name" class="form-input" placeholder="Ex: Nubank, ItaÃº, Inter" required />
+            <label class="form-label">Nome do Banco ou Cartão</label>
+            <input type="text" id="acc-name" class="form-input" placeholder="Ex: Nubank, Itaú, Inter" required />
           </div>
           <div class="form-group">
             <label class="form-label">Tipo</label>
             <select id="acc-type" class="form-select">
               <option value="Conta Corrente">Conta Corrente</option>
-              <option value="CartÃ£o de CrÃ©dito">CartÃ£o de CrÃ©dito</option>
+              <option value="Cartão de Crédito">Cartão de Crédito</option>
             </select>
           </div>
         </div>
@@ -520,7 +520,7 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
             <input type="number" step="0.01" id="acc-balance" class="form-input" value="0.00" />
           </div>
           <div class="form-group">
-            <label class="form-label">Limite disponÃ­vel (R$)</label>
+            <label class="form-label">Limite disponível (R$)</label>
             <input type="number" step="0.01" min="0" id="acc-limit" class="form-input" value="3000.00" />
           </div>
         </div>
@@ -542,12 +542,12 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
     </div>
   </div>
 
-  <!-- ==================== MODAL: DIÃLOGO ESTILIZADO (CONFIRMAÃ‡ÃƒO / INPUT) ==================== -->
+  <!-- ==================== MODAL: DIÁLOGO ESTILIZADO (CONFIRMAÇÃO / INPUT) ==================== -->
   <div class="modal-backdrop" id="modal-dialog">
     <div class="modal-card" style="max-width:420px;">
       <div class="modal-header">
-        <h3 class="modal-title" id="dialog-title">Confirmar aÃ§Ã£o</h3>
-        <button type="button" class="modal-close-btn" id="dialog-close-x" aria-label="Fechar">âœ•</button>
+        <h3 class="modal-title" id="dialog-title">Confirmar ação</h3>
+        <button type="button" class="modal-close-btn" id="dialog-close-x" aria-label="Fechar">✕</button>
       </div>
       <form id="form-dialog">
         <p id="dialog-message" style="font-size:13.5px; color:var(--text-secondary); line-height:1.5; margin-bottom:14px;"></p>
@@ -563,9 +563,9 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
     </div>
   </div>
 
-  <!-- Toast de Desfazer EdiÃ§Ã£o em Lote -->
+  <!-- Toast de Desfazer Edição em Lote -->
   <div id="undo-toast" role="status">
-    <span id="undo-toast-msg">AlteraÃ§Ã£o em lote aplicada.</span>
+    <span id="undo-toast-msg">Alteração em lote aplicada.</span>
     <button type="button" class="btn-primary" id="btn-undo-batch" style="padding:5px 12px; font-size:12px;">Desfazer</button>
   </div>
 
