@@ -1171,7 +1171,8 @@ function renderTransacoesView() {
             <td class="sensitive-val" style="font-weight:700; color:${t.type === 'expense' ? 'var(--coral-red)' : 'var(--green-emerald)'};">
               ${t.type === 'expense' ? '-' : '+'}${fmtBRL(t.amountCents)}
             </td>
-            <td style="text-align:right;">
+            <td style="text-align:right; white-space:nowrap;">
+              <button class="btn-icon-edit" data-edit-tx="${t.id}">✎ Editar</button>
               <button class="btn-danger-ghost" data-del-tx="${t.id}">Excluir</button>
             </td>
           </tr>
@@ -1346,6 +1347,12 @@ function bindTransacoesEvents() {
       });
     });
   }
+
+  document.querySelectorAll('[data-edit-tx]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      openTransactionModal(null, btn.dataset.editTx);
+    });
+  });
 
   const batchDelBtn = document.getElementById('btn-batch-delete');
   if (batchDelBtn) {
@@ -2534,35 +2541,56 @@ function renderQuickCategoryChips(selectedId) {
   });
 }
 
-function openTransactionModal(preselectedAccountId = null) {
-  manualCategoryPicked = false;
+function openTransactionModal(preselectedAccountId = null, editTxId = null) {
+  const editTx = editTxId ? state.transactions.find(t => t.id === editTxId) : null;
+  manualCategoryPicked = Boolean(editTx);
   const accSelect = document.getElementById('tx-account');
   accSelect.innerHTML = state.accounts
     .map(a => `<option value="${a.id}">${a.name}</option>`)
     .join('');
 
-  const targetAccId = preselectedAccountId || state.lastUsedAccountId || state.accounts[0]?.id;
-  if (targetAccId && state.accounts.some(a => a.id === targetAccId)) {
-    accSelect.value = targetAccId;
-  }
+  document.getElementById('tx-id').value = editTx ? editTx.id : '';
+  document.getElementById('modal-tx-title').textContent = editTx ? 'Editar Transação' : 'Lançamento Rápido';
 
-  const targetAcc = getAccountById(accSelect.value);
-  if (preselectedAccountId || targetAcc.type === 'Cartão de Crédito') {
-    document.getElementById('tx-method').value = 'Cartão de Crédito';
+  if (editTx) {
+    if (editTx.accountId && state.accounts.some(a => a.id === editTx.accountId)) {
+      accSelect.value = editTx.accountId;
+    }
+    document.getElementById('tx-method').value = editTx.method || 'Conta Corrente / Pix';
+    renderQuickCategoryChips(editTx.categoryId);
+
+    document.getElementById('tx-type').value = editTx.type || 'expense';
+    document.getElementById('tx-installments').value = '1';
+    document.getElementById('tx-date').value = editTx.date || getTodayISO();
+    document.getElementById('tx-amount').value = (editTx.amountCents / 100).toFixed(2);
+    document.getElementById('tx-desc').value = editTx.description || '';
+    document.getElementById('tx-tag').value = editTx.tag || '';
+    document.getElementById('tx-is-recurring').checked = false;
+    document.getElementById('quick-more-details').open = true;
   } else {
-    document.getElementById('tx-method').value = 'Conta Corrente / Pix';
+    const targetAccId = preselectedAccountId || state.lastUsedAccountId || state.accounts[0]?.id;
+    if (targetAccId && state.accounts.some(a => a.id === targetAccId)) {
+      accSelect.value = targetAccId;
+    }
+
+    const targetAcc = getAccountById(accSelect.value);
+    if (preselectedAccountId || targetAcc.type === 'Cartão de Crédito') {
+      document.getElementById('tx-method').value = 'Cartão de Crédito';
+    } else {
+      document.getElementById('tx-method').value = 'Conta Corrente / Pix';
+    }
+
+    renderQuickCategoryChips(null);
+
+    document.getElementById('tx-type').value = 'expense';
+    document.getElementById('tx-installments').value = '1';
+    document.getElementById('tx-date').value = getTodayISO();
+    document.getElementById('tx-amount').value = '';
+    document.getElementById('tx-desc').value = '';
+    document.getElementById('tx-tag').value = '';
+    document.getElementById('tx-is-recurring').checked = false;
+    document.getElementById('quick-more-details').open = false;
   }
-
-  renderQuickCategoryChips(null);
-
-  document.getElementById('tx-type').value = 'expense';
-  document.getElementById('tx-installments').value = '1';
-  document.getElementById('tx-date').value = getTodayISO();
-  document.getElementById('tx-amount').value = '';
-  document.getElementById('tx-desc').value = '';
-  document.getElementById('tx-tag').value = '';
-  document.getElementById('tx-is-recurring').checked = false;
-  document.getElementById('quick-more-details').open = false;
 
   updateInstallmentUI();
   document.getElementById('modal-transaction').classList.add('open');
@@ -2849,6 +2877,7 @@ export function initFarolApp() {
   // Salvar Lançamento Rápido (até 3 toques, centavos inteiros, parcelamento e recorrência)
   document.getElementById('form-transaction').addEventListener('submit', (e) => {
     e.preventDefault();
+    const editId = document.getElementById('tx-id').value;
     const type = document.getElementById('tx-type').value;
     const amountCents = toCents(document.getElementById('tx-amount').value);
     const categoryId = document.getElementById('tx-category').value || state.categories[0]?.id;
@@ -2868,7 +2897,19 @@ export function initFarolApp() {
 
     state.lastUsedAccountId = accountId;
 
-    if (installments > 1) {
+    if (editId) {
+      const existing = state.transactions.find(t => t.id === editId);
+      if (existing) {
+        existing.type = type;
+        existing.amountCents = amountCents;
+        existing.description = description;
+        existing.tag = tag;
+        existing.categoryId = categoryId;
+        existing.accountId = accountId;
+        existing.date = date;
+        existing.method = method;
+      }
+    } else if (installments > 1) {
       const [yStr, mStr, dStr] = date.split('-');
       const baseYear = parseInt(yStr, 10);
       const baseMonth = parseInt(mStr, 10) - 1;
