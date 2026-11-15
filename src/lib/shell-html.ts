@@ -512,10 +512,11 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
   <div class="modal-backdrop" id="modal-account">
     <div class="modal-card">
       <div class="modal-header">
-        <h3 class="modal-title">Nova Conta ou Cartão</h3>
+        <h3 class="modal-title" id="modal-acc-title">Nova Conta ou Cartão</h3>
         <button type="button" class="modal-close-modal modal-close-btn" data-close-modal="modal-account" aria-label="Fechar">✕</button>
       </div>
       <form id="form-account">
+        <input type="hidden" id="acc-id" />
         <div class="form-row-2">
           <div class="form-group">
             <label class="form-label">Nome do Banco ou Cartão</label>
@@ -524,6 +525,7 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
           <div class="form-group">
             <label class="form-label">Tipo</label>
             <select id="acc-type" class="form-select">
+              <option value="Conta + Cartão">Conta + Cartão</option>
               <option value="Conta Corrente">Conta Corrente</option>
               <option value="Cartão de Crédito">Cartão de Crédito</option>
             </select>

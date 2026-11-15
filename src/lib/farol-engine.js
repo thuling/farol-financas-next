@@ -1675,9 +1675,10 @@ function renderFaturasView() {
   let totalOpenCents = 0;
 
   const cardsHtml = state.accounts.map(acc => {
-    // Regra de fechamento: filtra todas as despesas deste cartão cuja fatura cai em state.selectedMonth
+    // Regra de fechamento: filtra apenas despesas no Cartão de Crédito deste banco/cartão cuja fatura cai em state.selectedMonth
     const accTxs = state.transactions.filter(t => {
       if (t.accountId !== acc.id || t.type !== 'expense') return false;
+      if (t.method !== 'Cartão de Crédito' && acc.type !== 'Cartão de Crédito') return false;
       return getInvoiceMonthForTransaction(t, acc) === state.selectedMonth;
     }).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
@@ -2466,9 +2467,12 @@ function renderContasView() {
     const balCents = getAccountBalanceCents(a);
     return `
       <div class="card">
-        <div class="card-header-row">
+        <div class="card-header-row" style="gap:10px;">
           <span style="font-weight:600;">${a.name}</span>
-          <span class="cat-pct-badge">${a.type}</span>
+          <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+            <span class="cat-pct-badge">${a.type}</span>
+            <button class="btn-icon-edit" data-edit-acc="${a.id}">✎ Editar</button>
+          </div>
         </div>
         <div class="big-currency sensitive-val" style="font-size:22px; margin-top:8px;">
           ${a.type === 'Cartão de Crédito' ? `Limite: ${fmtBRL(a.limitCents)}` : `Saldo: ${fmtBRL(balCents)}`}
@@ -2482,7 +2486,10 @@ function renderContasView() {
 
   return `
     <div class="section-toolbar">
-      <h3 class="card-title" style="font-size:16px;">Minhas Contas & Cartões</h3>
+      <div>
+        <h3 class="card-title" style="font-size:16px;">Minhas Contas & Cartões</h3>
+        <p class="vs-prev">Use "Conta + Cartão" para bancos onde você concentra o saldo da conta e também usa o cartão de crédito.</p>
+      </div>
       <button class="btn-primary" id="btn-new-account">+ Adicionar Conta</button>
     </div>
     <div class="cards-grid-3">${cards}</div>
@@ -2492,8 +2499,11 @@ function renderContasView() {
 function bindContasEvents() {
   const btn = document.getElementById('btn-new-account');
   if (btn) {
-    btn.addEventListener('click', () => openAccountModal());
+    btn.addEventListener('click', () => openAccountModal(null));
   }
+  document.querySelectorAll('[data-edit-acc]').forEach(el => {
+    el.addEventListener('click', () => openAccountModal(el.dataset.editAcc));
+  });
 }
 
 // ============================================================
@@ -3007,12 +3017,12 @@ export function initFarolApp() {
     });
   }
 
-  // Salvar Nova Conta / Cartão
+  // Salvar Nova / Editar Conta / Cartão
   const accTypeSelect = document.getElementById('acc-type');
   const accCardRow = document.getElementById('acc-card-dates-row');
   if (accTypeSelect && accCardRow) {
     accTypeSelect.addEventListener('change', () => {
-      accCardRow.style.display = accTypeSelect.value === 'Cartão de Crédito' ? 'grid' : 'none';
+      accCardRow.style.display = (accTypeSelect.value === 'Cartão de Crédito' || accTypeSelect.value === 'Conta + Cartão') ? 'grid' : 'none';
     });
   }
 
@@ -3020,6 +3030,7 @@ export function initFarolApp() {
   if (formAcc) {
     formAcc.addEventListener('submit', (e) => {
       e.preventDefault();
+      const accId = document.getElementById('acc-id').value;
       const name = document.getElementById('acc-name').value.trim();
       if (!name) return;
       const type = document.getElementById('acc-type').value;
@@ -3028,15 +3039,27 @@ export function initFarolApp() {
       const closingDay = Math.min(31, Math.max(1, parseInt(document.getElementById('acc-closing-day').value, 10) || 5));
       const dueDay = Math.min(31, Math.max(1, parseInt(document.getElementById('acc-due-day').value, 10) || 12));
 
-      state.accounts.push({
-        id: 'acc-' + Date.now(),
-        name,
-        type,
-        initialBalanceCents: balCents,
-        limitCents,
-        closingDay,
-        dueDay
-      });
+      if (accId) {
+        const existing = state.accounts.find(a => a.id === accId);
+        if (existing) {
+          existing.name = name;
+          existing.type = type;
+          existing.initialBalanceCents = balCents;
+          existing.limitCents = limitCents;
+          existing.closingDay = closingDay;
+          existing.dueDay = dueDay;
+        }
+      } else {
+        state.accounts.push({
+          id: 'acc-' + Date.now(),
+          name,
+          type,
+          initialBalanceCents: balCents,
+          limitCents,
+          closingDay,
+          dueDay
+        });
+      }
       saveState();
       document.getElementById('modal-account').classList.remove('open');
       renderApp();
@@ -3077,15 +3100,19 @@ function openRecurrenceModal(recId = null) {
   setTimeout(() => document.getElementById('rec-desc').focus(), 40);
 }
 
-function openAccountModal() {
-  document.getElementById('acc-name').value = '';
-  document.getElementById('acc-type').value = 'Conta Corrente';
-  document.getElementById('acc-balance').value = '0.00';
-  document.getElementById('acc-limit').value = '3000.00';
-  document.getElementById('acc-closing-day').value = '5';
-  document.getElementById('acc-due-day').value = '12';
+function openAccountModal(accId = null) {
+  const acc = accId ? state.accounts.find(a => a.id === accId) : null;
+  document.getElementById('modal-acc-title').textContent = acc ? `Editar — ${acc.name}` : 'Nova Conta ou Cartão';
+  document.getElementById('acc-id').value = acc ? acc.id : '';
+  document.getElementById('acc-name').value = acc ? acc.name : '';
+  document.getElementById('acc-type').value = acc ? acc.type : 'Conta + Cartão';
+  document.getElementById('acc-balance').value = acc ? fromCents(acc.initialBalanceCents || 0).toFixed(2) : '0.00';
+  document.getElementById('acc-limit').value = acc ? fromCents(acc.limitCents || 300000).toFixed(2) : '3000.00';
+  document.getElementById('acc-closing-day').value = acc ? String(acc.closingDay || 5) : '5';
+  document.getElementById('acc-due-day').value = acc ? String(acc.dueDay || 12) : '12';
   const cardRow = document.getElementById('acc-card-dates-row');
-  if (cardRow) cardRow.style.display = 'none';
+  const showCardDates = !acc || acc.type === 'Cartão de Crédito' || acc.type === 'Conta + Cartão';
+  if (cardRow) cardRow.style.display = showCardDates ? 'grid' : 'none';
   document.getElementById('modal-account').classList.add('open');
   setTimeout(() => document.getElementById('acc-name').focus(), 40);
 }
