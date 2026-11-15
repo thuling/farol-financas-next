@@ -759,7 +759,7 @@ function renderVisaoGeral() {
         <div class="big-currency sensitive-val" style="margin-top:4px;">${fmtBRL(m.totalInvestmentsCents)}</div>
 
         <div style="margin: 18px 0 8px;">
-          <svg width="100%" height="46" viewBox="0 0 280 46" preserveAspectRatio="none">
+          <svg width="100%" viewBox="0 0 280 46" style="display:block; height:auto; max-height:52px;">
             <defs>
               <linearGradient id="invGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stop-color="#38b6ff" stop-opacity="0.24"/>
@@ -768,7 +768,7 @@ function renderVisaoGeral() {
             </defs>
             <path d="M 4 14 L 210 14 Q 235 14 252 24 L 274 37 L 274 44 L 4 44 Z" fill="url(#invGrad)" />
             <path d="M 4 14 L 210 14 Q 235 14 252 24 L 274 37" fill="none" stroke="#49b6eb" stroke-width="2" stroke-linecap="round"/>
-            <circle cx="274" cy="37" r="3.5" fill="#f59e0b" stroke="#14222b" stroke-width="1.5"/>
+            <circle cx="274" cy="37" r="3.8" fill="#f59e0b" stroke="#14222b" stroke-width="1.5"/>
           </svg>
         </div>
 
@@ -1008,31 +1008,50 @@ function bindChartTooltips() {
   });
 }
 
-function buildMonthlySpendSvg(expenseCents, txs = []) {
-  const hasSpend = expenseCents > 0;
-  const pathLine = hasSpend
-    ? 'M 4 56 L 145 56 C 160 56, 168 16, 182 16 L 288 16'
-    : 'M 4 56 L 288 56';
-  const pathArea = hasSpend
-    ? 'M 4 56 L 145 56 C 160 56, 168 16, 182 16 L 288 16 L 288 68 L 4 68 Z'
-    : 'M 4 56 L 288 56 L 288 68 L 4 68 Z';
-  const endY = hasSpend ? 16 : 56;
+function buildSmoothSvgPath(pts) {
+  if (!pts || pts.length === 0) return '';
+  if (pts.length === 1) return `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+  let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i];
+    const p1 = pts[i + 1];
+    const midX = (p0.x + p1.x) / 2;
+    d += ` C ${midX.toFixed(1)} ${p0.y.toFixed(1)}, ${midX.toFixed(1)} ${p1.y.toFixed(1)}, ${p1.x.toFixed(1)} ${p1.y.toFixed(1)}`;
+  }
+  return d;
+}
 
+function buildMonthlySpendSvg(expenseCents, txs = []) {
   const days = Array.from({ length: 12 }, (_, i) => i + 1);
-  const zones = days.map((day, idx) => {
+  const dailyCum = days.map(day =>
+    txs
+      .filter(t => t.type === 'expense' && parseInt((t.date || '').split('-')[2] || '12', 10) <= day)
+      .reduce((s, t) => s + (Number(t.amountCents) || 0), 0)
+  );
+  const maxCum = Math.max(expenseCents, ...dailyCum, 100);
+  const hasSpend = expenseCents > 0;
+
+  const pts = days.map((day, idx) => {
+    const x = 4 + (idx / (days.length - 1)) * 284;
+    const y = hasSpend ? (56 - (dailyCum[idx] / maxCum) * 40) : 56;
+    return { x, y, day, cumCents: dailyCum[idx] };
+  });
+
+  const pathLine = buildSmoothSvgPath(pts);
+  const pathArea = `${pathLine} L 288 68 L 4 68 Z`;
+  const endY = pts[pts.length - 1].y;
+
+  const zones = pts.map((p, idx) => {
     const x = idx * (296 / 12);
     const w = 296 / 12;
-    const cumCents = txs
-      .filter(t => t.type === 'expense' && parseInt((t.date || '').split('-')[2] || '12', 10) <= day)
-      .reduce((s, t) => s + (Number(t.amountCents) || 0), 0);
     return `<rect x="${x.toFixed(1)}" y="0" width="${w.toFixed(1)}" height="72" fill="transparent"
       class="chart-hover-zone"
-      data-tip-title="Dia ${day} (acumulado)"
-      data-tip-val="${fmtBRL(cumCents)}" />`;
+      data-tip-title="Dia ${p.day} (acumulado)"
+      data-tip-val="${fmtBRL(p.cumCents)}" />`;
   }).join('');
 
   return `
-    <svg width="100%" height="76" viewBox="0 0 296 72" preserveAspectRatio="none">
+    <svg width="100%" viewBox="0 0 296 72" style="display:block; height:auto; max-height:80px;">
       <defs>
         <linearGradient id="coralArea" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stop-color="#f16364" stop-opacity="0.28"/>
@@ -1044,7 +1063,7 @@ function buildMonthlySpendSvg(expenseCents, txs = []) {
       <line x1="0" y1="56" x2="296" y2="56" stroke="var(--chart-grid, rgba(255,255,255,0.05))" stroke-width="1"/>
       <path d="${pathArea}" fill="url(#coralArea)"/>
       <path d="${pathLine}" fill="none" stroke="#f16364" stroke-width="2.3" stroke-linecap="round"/>
-      <circle cx="288" cy="${endY}" r="4.5" fill="#f59e0b" stroke="#ffffff" stroke-width="1.5"/>
+      <circle cx="288" cy="${endY.toFixed(1)}" r="4.5" fill="#f59e0b" stroke="#ffffff" stroke-width="1.5"/>
       ${zones}
     </svg>
   `;
@@ -1121,7 +1140,7 @@ function buildAccumulatedAreaSvg(expenseCents, mode, partialResultCents = 0) {
   `).join('');
 
   return `
-    <svg width="100%" height="56" viewBox="0 0 560 52" preserveAspectRatio="none">
+    <svg width="100%" viewBox="0 0 560 52" style="display:block; height:auto; max-height:62px;">
       <line x1="0" y1="44" x2="560" y2="44" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
       <path d="M 0 42 L 260 42 C 300 42, 320 14, 360 14 L 555 14" fill="none" stroke="${color}" stroke-width="2.2"/>
       <circle cx="555" cy="14" r="4" fill="#f59e0b" stroke="#fff" stroke-width="1.2"/>
@@ -1621,7 +1640,7 @@ function renderFluxoCaixaView() {
   }).join('');
 
   const historyChartHtml = `
-    <svg width="100%" height="215" viewBox="0 0 ${svgW} ${svgH}" preserveAspectRatio="none">
+    <svg width="100%" viewBox="0 0 ${svgW} ${svgH}" style="display:block; height:auto; max-height:225px;">
       ${gridLines}
       ${svgBars}
     </svg>
@@ -2362,6 +2381,46 @@ function bindPatrimonioEvents() {
 // ============================================================
 let projState = { horizon: 12, deductGoals: true, selectedIdx: 0, bannerIdx: 0 };
 
+function fmtAxisCompactBRL(cents) {
+  const abs = Math.abs(cents);
+  const sign = cents < 0 ? '-' : '';
+  if (abs === 0) return 'R$ 0';
+  if (abs >= 100000) {
+    const kVal = abs / 100000;
+    const formatted = Number.isInteger(kVal) ? String(kVal) : kVal.toFixed(1).replace('.', ',');
+    return `${sign}R$ ${formatted}k`;
+  }
+  return `${sign}R$ ${Math.round(abs / 100)}`;
+}
+
+function buildTopRoundedBarPath(x, yTop, w, h, r = 7, isNegative = false) {
+  if (h <= 0.5) return '';
+  const radius = Math.min(r, w / 2, h);
+  const xRight = x + w;
+  const yBottom = yTop + h;
+  if (!isNegative) {
+    return [
+      `M ${x.toFixed(1)} ${yBottom.toFixed(1)}`,
+      `L ${x.toFixed(1)} ${(yTop + radius).toFixed(1)}`,
+      `Q ${x.toFixed(1)} ${yTop.toFixed(1)} ${(x + radius).toFixed(1)} ${yTop.toFixed(1)}`,
+      `L ${(xRight - radius).toFixed(1)} ${yTop.toFixed(1)}`,
+      `Q ${xRight.toFixed(1)} ${yTop.toFixed(1)} ${xRight.toFixed(1)} ${(yTop + radius).toFixed(1)}`,
+      `L ${xRight.toFixed(1)} ${yBottom.toFixed(1)}`,
+      'Z'
+    ].join(' ');
+  } else {
+    return [
+      `M ${x.toFixed(1)} ${yTop.toFixed(1)}`,
+      `L ${xRight.toFixed(1)} ${yTop.toFixed(1)}`,
+      `L ${xRight.toFixed(1)} ${(yBottom - radius).toFixed(1)}`,
+      `Q ${xRight.toFixed(1)} ${yBottom.toFixed(1)} ${(xRight - radius).toFixed(1)} ${yBottom.toFixed(1)}`,
+      `L ${(x + radius).toFixed(1)} ${yBottom.toFixed(1)}`,
+      `Q ${x.toFixed(1)} ${yBottom.toFixed(1)} ${x.toFixed(1)} ${(yBottom - radius).toFixed(1)}`,
+      'Z'
+    ].join(' ');
+  }
+}
+
 function renderProjecaoView() {
   const shortMonths = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
   const salaryCents = Number(state.profile.monthlySalaryCents) || 0;
@@ -2385,7 +2444,6 @@ function renderProjecaoView() {
     const monthLabel = shortMonths[(parseInt(mStr, 10) || 1) - 1];
     const mMetrics = computeMonthMetrics(ym);
 
-    // Para o mês atual usa o realizado + salário/recorrências; para futuros projeta salário + parcelas já lançadas + recorrências ativas
     const hasTxInMonth = mMetrics.incomeCents > 0 || mMetrics.expenseCents > 0;
     const revCents = hasTxInMonth ? mMetrics.incomeCents : salaryCents;
     const expCents = hasTxInMonth ? mMetrics.expenseCents : (mMetrics.expenseCents + fixedRecOutCents);
@@ -2409,136 +2467,266 @@ function renderProjecaoView() {
 
   const finalBalanceCents = series[series.length - 1]?.endBalCents || 0;
   const periodDeltaCents = finalBalanceCents - (series[0]?.startBalCents || 0);
-  const activeDetail = series[Math.min(projState.selectedIdx, series.length - 1)] || series[0];
+  const selIdx = Math.min(projState.selectedIdx, series.length - 1);
+  const activeDetail = series[selIdx] || series[0];
 
   // Parcelamentos terminando nos próximos meses
   const endingInstallments = state.transactions.filter(t => /\(\d+\/\d+\)/.test(t.description || ''));
   let endingMsg = 'Nenhum parcelamento ativo no cartão para encerrar nos próximos meses.';
   if (endingInstallments.length > 0) {
     const totalReleasedCents = endingInstallments.reduce((s, t) => s + (Number(t.amountCents) || 0), 0);
-    endingMsg = `${fmtBRL(totalReleasedCents)} em parcelas mapeadas nos próximos meses.`;
+    endingMsg = `<b>${fmtBRL(totalReleasedCents)}/mês</b> liberados quando <b>${endingInstallments.length} parcelamento(s)</b> terminam.`;
   }
   const bannerSlides = [
     { title: 'Parcelamentos terminando', desc: endingMsg },
-    { title: 'Impacto das Recorrências', desc: `Suas despesas recorrentes ativas somam ${fmtBRL(fixedRecOutCents)}/mês frente ao salário de ${fmtBRL(salaryCents)}/mês.` }
+    { title: 'Impacto das Recorrências', desc: `Suas despesas recorrentes ativas somam <b>${fmtBRL(fixedRecOutCents)}/mês</b> frente ao salário de <b>${fmtBRL(salaryCents)}/mês</b>.` },
+    { title: 'Ritmo de Acúmulo no Período', desc: `Em <b>${horizon} meses</b>, sua geração acumulada projetada é de <b>${fmtBRL(periodDeltaCents, true)}</b>.` }
   ];
-  const currentBanner = bannerSlides[projState.bannerIdx % bannerSlides.length];
+  const activeSlideIdx = ((projState.bannerIdx % bannerSlides.length) + bannerSlides.length) % bannerSlides.length;
+  const currentBanner = bannerSlides[activeSlideIdx];
 
-  // Gráfico Combo SVG (Barras Resultado Líquido + Linha Saldo Projetado)
-  const svgW = 840;
-  const svgH = 220;
-  const padL = 54;
+  // Gráfico Combo SVG de Alta Precisão (sem preserveAspectRatio="none", sem distorção oval)
+  const svgW = 1040;
+  const svgH = 264;
+  const padL = 68;
   const padR = 24;
-  const padT = 20;
-  const padB = 30;
+  const padT = 22;
+  const padB = 34;
   const chartW = svgW - padL - padR;
   const chartH = svgH - padT - padB;
 
   const allVals = series.flatMap(s => [s.endBalCents, s.netCents, 0]);
-  const maxVal = Math.max(10000, ...allVals);
-  const minVal = Math.min(0, ...allVals);
-  const span = Math.max(1, maxVal - minVal);
-  const toY = (v) => padT + chartH - ((v - minVal) / span) * chartH;
+  const rawMax = Math.max(100000, ...allVals);
+  const rawMin = Math.min(0, ...allVals);
+
+  // Calcula passo arredondado elegante para 5 divisões acima de zero
+  const targetSteps = 5;
+  const rawStep = Math.max(20000, (rawMax - rawMin) / targetSteps);
+  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const residual = rawStep / mag;
+  const niceFactor = residual <= 1 ? 1 : residual <= 2 ? 2 : residual <= 2.5 ? 2.5 : residual <= 5 ? 5 : 10;
+  const stepVal = niceFactor * mag;
+
+  const niceMax = Math.max(stepVal * targetSteps, Math.ceil(rawMax / stepVal) * stepVal);
+  const niceMin = rawMin < 0 ? Math.floor(rawMin / stepVal) * stepVal : 0;
+  const span = Math.max(1, niceMax - niceMin);
+
+  const toY = (v) => padT + chartH - ((v - niceMin) / span) * chartH;
   const zeroY = toY(0);
 
-  const stepX = chartW / Math.max(1, series.length);
-  const barW = Math.min(28, stepX * 0.42);
-
-  const barsAndDots = series.map((s, idx) => {
-    const cx = padL + stepX * idx + stepX / 2;
-    const yNet = toY(s.netCents);
-    const barY = Math.min(yNet, zeroY);
-    const barH = Math.max(3, Math.abs(zeroY - yNet));
-    const barColor = s.netCents >= 0 ? '#34d399' : '#f16364';
-    const yBal = toY(s.endBalCents);
-
+  // Linhas horizontais de grade (Y-axis) estilo Visor/Monarch
+  const gridTicks = [];
+  for (let v = niceMin; v <= niceMax + stepVal * 0.1; v += stepVal) {
+    gridTicks.push(Math.round(v));
+  }
+  const yGridHtml = gridTicks.map(val => {
+    const y = toY(val);
+    const isZero = val === 0;
     return `
-      <rect x="${(cx - barW / 2).toFixed(1)}" y="${barY.toFixed(1)}" width="${barW.toFixed(1)}" height="${barH.toFixed(1)}" rx="5" fill="${barColor}" opacity="0.78"
-        class="chart-hover-zone" data-proj-select="${idx}"
-        data-tip-title="${s.label} · Saldo: ${fmtBRL(s.endBalCents)}"
-        data-tip-val="Líquido: ${fmtBRL(s.netCents, true)}" />
-      <circle cx="${cx.toFixed(1)}" cy="${yBal.toFixed(1)}" r="${idx === projState.selectedIdx ? 5.5 : 4}" fill="#49b6eb" stroke="#ffffff" stroke-width="1.5"
-        class="chart-hover-zone" data-proj-select="${idx}"
-        data-tip-title="${s.label} · Saldo Projetado"
-        data-tip-val="${fmtBRL(s.endBalCents)}" />
-      <text x="${cx.toFixed(1)}" y="${svgH - 8}" text-anchor="middle" fill="#8fa3b0" font-size="11">${s.label}</text>
+      <line x1="${padL}" y1="${y.toFixed(1)}" x2="${svgW - padR}" y2="${y.toFixed(1)}"
+        stroke="${isZero ? 'var(--chart-zero-line, rgba(255,255,255,0.16))' : 'var(--chart-grid, rgba(255,255,255,0.055))'}"
+        stroke-width="${isZero ? '1.2' : '1'}" />
+      <text x="${padL - 12}" y="${(y + 4).toFixed(1)}" text-anchor="end" fill="#6e8594" font-size="11" font-weight="500" class="sensitive-val">${fmtAxisCompactBRL(val)}</text>
     `;
   }).join('');
 
-  const linePoints = series.map((s, idx) => {
+  const stepX = chartW / Math.max(1, series.length);
+  const barW = Math.min(38, Math.max(18, stepX * 0.44));
+
+  // Escala visual proporcional para as barras de Resultado Líquido (para que barras de R$ 2k não fiquem esmagadas quando o saldo de 12M é R$ 26k)
+  const maxAbsNet = Math.max(1, ...series.map(s => Math.abs(s.netCents)));
+  const naturalMaxBarH = (maxAbsNet / span) * chartH;
+  const minDesiredPeakBarH = Math.min(chartH * 0.36, Math.max(24, zeroY - padT - 12));
+  const barBoost = naturalMaxBarH < minDesiredPeakBarH ? (minDesiredPeakBarH / naturalMaxBarH) : 1;
+
+  const lineCoords = series.map((s, idx) => ({
+    x: padL + stepX * idx + stepX / 2,
+    y: toY(s.endBalCents),
+    s,
+    idx
+  }));
+
+  const barsHtml = series.map((s, idx) => {
     const cx = padL + stepX * idx + stepX / 2;
-    return `${cx.toFixed(1)},${toY(s.endBalCents).toFixed(1)}`;
-  }).join(' ');
+    const isSelected = idx === selIdx;
+    const isNeg = s.netCents < 0;
+    const rawBarH = (Math.abs(s.netCents) / span) * chartH * barBoost;
+    const maxAllowedPosH = Math.max(6, zeroY - padT - 6);
+    const maxAllowedNegH = Math.max(6, padT + chartH - zeroY - 4);
+    const barH = s.netCents === 0 ? 3 : Math.min(isNeg ? maxAllowedNegH : maxAllowedPosH, Math.max(8, rawBarH));
+    const barY = isNeg ? zeroY : (zeroY - barH);
+
+    const fillCol = isNeg
+      ? (isSelected ? '#f16364' : 'rgba(241, 99, 100, 0.52)')
+      : (isSelected ? 'url(#projBarActiveGrad)' : 'rgba(52, 211, 153, 0.42)');
+    const barPath = buildTopRoundedBarPath(cx - barW / 2, barY, barW, barH, 7, isNeg);
+
+    return `
+      <g class="chart-hover-zone" data-proj-select="${idx}"
+         data-tip-title="${s.label} (${s.ym}) · Saldo: ${fmtBRL(s.endBalCents)}"
+         data-tip-val="Resultado Líquido: ${fmtBRL(s.netCents, true)}">
+        <rect x="${(cx - stepX / 2).toFixed(1)}" y="${padT}" width="${stepX.toFixed(1)}" height="${chartH}" fill="transparent" />
+        ${isSelected ? `<line x1="${cx.toFixed(1)}" y1="${padT}" x2="${cx.toFixed(1)}" y2="${zeroY.toFixed(1)}" stroke="rgba(56, 189, 248, 0.22)" stroke-width="1" stroke-dasharray="3 3" />` : ''}
+        <path d="${barPath}" fill="${fillCol}" />
+        <text x="${cx.toFixed(1)}" y="${svgH - 8}" text-anchor="middle"
+          fill="${isSelected ? 'var(--text-main)' : '#7c94a3'}"
+          font-size="11.5"
+          font-weight="${isSelected ? '700' : '500'}">${s.label}</text>
+      </g>
+    `;
+  }).join('');
+
+  const smoothLinePath = buildSmoothSvgPath(lineCoords);
+  const firstX = lineCoords[0]?.x || padL;
+  const lastX = lineCoords[lineCoords.length - 1]?.x || (svgW - padR);
+  const areaUnderLinePath = `${smoothLinePath} L ${lastX.toFixed(1)} ${zeroY.toFixed(1)} L ${firstX.toFixed(1)} ${zeroY.toFixed(1)} Z`;
+
+  const dotsHtml = lineCoords.map(({ x, y, s, idx }) => {
+    const isSelected = idx === selIdx;
+    return `
+      <g class="chart-hover-zone" data-proj-select="${idx}"
+         data-tip-title="${s.label} (${s.ym}) · Saldo Projetado"
+         data-tip-val="${fmtBRL(s.endBalCents)}">
+        ${isSelected ? `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="9" fill="rgba(59, 130, 246, 0.24)" />` : ''}
+        <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${isSelected ? '5' : '4'}"
+          fill="${isSelected ? '#38bdf8' : '#3b82f6'}"
+          stroke="#ffffff"
+          stroke-width="${isSelected ? '2.2' : '1.6'}" />
+      </g>
+    `;
+  }).join('');
+
+  const bannerDotsHtml = bannerSlides.map((_, idx) =>
+    `<span class="proj-carousel-dot ${idx === activeSlideIdx ? 'active' : ''}" data-proj-slide="${idx}"></span>`
+  ).join('');
 
   return `
-    <div class="card" style="margin-bottom:18px;">
-      <div class="section-toolbar" style="margin-bottom:12px;">
+    <div class="card proj-main-card" style="margin-bottom:18px;">
+      <div class="proj-header-top">
         <div>
-          <div style="font-size:11px; font-weight:700; letter-spacing:0.06em; color:var(--text-muted);">SALDO PROJETADO</div>
+          <div class="proj-eyebrow">SALDO PROJETADO</div>
           <div style="display:flex; align-items:center; gap:12px; margin-top:4px; flex-wrap:wrap;">
-            <span class="big-currency sensitive-val" style="font-size:30px;">${fmtBRL(finalBalanceCents)}</span>
-            <span class="badge-type ${periodDeltaCents >= 0 ? 'income' : 'expense'} sensitive-val">
-              ${fmtBRL(periodDeltaCents, true)} no período
+            <span class="big-currency sensitive-val" style="font-size:32px; letter-spacing:-0.03em;">${fmtBRL(finalBalanceCents)}</span>
+            <span class="proj-delta-pill ${periodDeltaCents >= 0 ? 'positive' : 'negative'} sensitive-val">
+              ${periodDeltaCents >= 0 ? '↗' : '↘'} ${fmtBRL(periodDeltaCents, true)} no período
             </span>
           </div>
         </div>
-        <div class="segmented-tabs">
-          <button class="seg-btn ${horizon === 3 ? 'active' : ''}" data-proj-horizon="3">3M</button>
-          <button class="seg-btn ${horizon === 6 ? 'active' : ''}" data-proj-horizon="6">6M</button>
-          <button class="seg-btn ${horizon === 12 ? 'active' : ''}" data-proj-horizon="12">12M</button>
+
+        <div class="proj-controls-right">
+          <div class="segmented-tabs">
+            <button class="seg-btn ${horizon === 3 ? 'active' : ''}" data-proj-horizon="3">3M</button>
+            <button class="seg-btn ${horizon === 6 ? 'active' : ''}" data-proj-horizon="6">6M</button>
+            <button class="seg-btn ${horizon === 12 ? 'active' : ''}" data-proj-horizon="12">12M</button>
+          </div>
+
+          <div class="proj-legend-row">
+            <span class="proj-legend-item">
+              <span class="proj-legend-box"></span>Resultado Líquido
+            </span>
+            <span class="proj-legend-item">
+              <span class="proj-legend-line"></span>Saldo Projetado
+            </span>
+          </div>
         </div>
       </div>
 
-      <div style="display:flex; justify-content:flex-end; gap:16px; font-size:11.5px; color:var(--text-secondary); margin-bottom:6px;">
-        <span style="display:inline-flex; align-items:center; gap:6px;"><span class="cat-dot" style="background:#34d399;"></span>Resultado Líquido</span>
-        <span style="display:inline-flex; align-items:center; gap:6px;"><span class="cat-dot" style="background:#49b6eb;"></span>Saldo Projetado</span>
+      <div class="proj-chart-container">
+        <svg class="proj-chart-svg" width="100%" viewBox="0 0 ${svgW} ${svgH}">
+          <defs>
+            <linearGradient id="projBarActiveGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#34d399" stop-opacity="1" />
+              <stop offset="100%" stop-color="#10b981" stop-opacity="0.88" />
+            </linearGradient>
+            <linearGradient id="projLineAreaGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.20" />
+              <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.0" />
+            </linearGradient>
+          </defs>
+          ${yGridHtml}
+          <path d="${areaUnderLinePath}" fill="url(#projLineAreaGrad)" pointer-events="none" />
+          ${barsHtml}
+          <path d="${smoothLinePath}" fill="none" stroke="#3b82f6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" pointer-events="none" />
+          ${dotsHtml}
+        </svg>
       </div>
-
-      <svg width="100%" height="225" viewBox="0 0 ${svgW} ${svgH}" preserveAspectRatio="none">
-        <line x1="${padL}" y1="${zeroY.toFixed(1)}" x2="${svgW - padR}" y2="${zeroY.toFixed(1)}" stroke="var(--chart-grid, rgba(255,255,255,0.12))" stroke-width="1"/>
-        <text x="6" y="${toY(maxVal) + 4}" fill="#5e7482" font-size="10.5">${fmtBRL(maxVal)}</text>
-        <text x="6" y="${zeroY + 4}" fill="#5e7482" font-size="10.5">R$ 0</text>
-        <polyline fill="none" stroke="#49b6eb" stroke-width="2.5" points="${linePoints}" />
-        ${barsAndDots}
-      </svg>
     </div>
 
     <div class="proj-banner-blue" style="margin-bottom:18px;">
-      <div>
-        <div style="font-size:13px; font-weight:700; margin-bottom:4px;">👁 ${currentBanner.title}</div>
-        <div class="sensitive-val" style="font-size:13.5px; opacity:0.95;">${currentBanner.desc}</div>
+      <div class="proj-banner-content">
+        <div class="proj-banner-title-row">
+          <span class="proj-banner-eye">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+            </svg>
+          </span>
+          <span>${currentBanner.title}</span>
+        </div>
+        <div class="proj-banner-desc sensitive-val">${currentBanner.desc}</div>
       </div>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <button class="icon-circle-btn" id="btn-proj-prev" style="width:30px; height:30px; background:rgba(255,255,255,0.18); border:none; color:#fff;">‹</button>
-        <button class="icon-circle-btn" id="btn-proj-next" style="width:30px; height:30px; background:rgba(255,255,255,0.18); border:none; color:#fff;">›</button>
+
+      <div class="proj-carousel-nav">
+        <button class="proj-carousel-btn" id="btn-proj-prev" aria-label="Slide anterior">‹</button>
+        <div class="proj-carousel-dots">${bannerDotsHtml}</div>
+        <button class="proj-carousel-btn" id="btn-proj-next" aria-label="Próximo slide">›</button>
       </div>
     </div>
 
-    <div class="card">
-      <div class="card-header-row" style="margin-bottom:8px;">
-        <span class="card-title" style="font-size:13px; font-weight:700; letter-spacing:0.04em;">DETALHAMENTO DO MÊS</span>
-        <span class="badge-pill-dark">${activeDetail.label} (${activeDetail.ym})</span>
+    <div class="card proj-detail-card">
+      <div class="card-header-row" style="margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid var(--border-subtle);">
+        <span style="display:inline-flex; align-items:center; gap:8px; font-size:12px; font-weight:700; letter-spacing:0.06em; color:var(--text-secondary);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+          DETALHAMENTO DO MÊS
+        </span>
+        <span class="badge-pill-dark" style="font-weight:700;">${activeDetail.label} (${activeDetail.ym})</span>
       </div>
 
       <div class="proj-detail-row">
-        <span>Saldo Inicial</span>
-        <b class="sensitive-val">${fmtBRL(activeDetail.startBalCents)}</b>
+        <div class="proj-detail-left">
+          <span class="proj-chevron">›</span>
+          <span class="proj-row-icon neutral">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+          </span>
+          <span style="font-weight:600;">Saldo Inicial</span>
+        </div>
+        <b class="sensitive-val" style="font-size:14px;">${fmtBRL(activeDetail.startBalCents)}</b>
       </div>
+
       <div class="proj-detail-row">
-        <span>RECEITAS</span>
-        <b class="sensitive-val" style="color:var(--green-emerald);">+${fmtBRL(activeDetail.revCents)}</b>
+        <div class="proj-detail-left">
+          <span class="proj-chevron">›</span>
+          <span class="proj-row-icon income">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 10 5 5 5-5"/><path d="m7 5 5 5 5-5"/></svg>
+          </span>
+          <span style="font-size:12px; font-weight:700; letter-spacing:0.04em; color:var(--text-secondary);">RECEITAS</span>
+        </div>
+        <b class="sensitive-val" style="color:var(--green-emerald); font-size:14px;">+${fmtBRL(activeDetail.revCents)}</b>
       </div>
+
       <div class="proj-detail-row">
-        <span>GASTOS</span>
-        <b class="sensitive-val" style="color:var(--coral-red);">-${fmtBRL(activeDetail.expCents)}</b>
+        <div class="proj-detail-left">
+          <span class="proj-chevron">›</span>
+          <span class="proj-row-icon expense">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 14-5-5-5 5"/><path d="m17 19-5-5-5 5"/></svg>
+          </span>
+          <span style="font-size:12px; font-weight:700; letter-spacing:0.04em; color:var(--text-secondary);">GASTOS</span>
+        </div>
+        <b class="sensitive-val" style="color:var(--coral-red); font-size:14px;">-${fmtBRL(activeDetail.expCents)}</b>
       </div>
+
       <div class="proj-detail-row">
-        <div>
-          <div style="font-weight:600;">Metas</div>
-          <div style="font-size:11.5px; color:var(--text-muted);">Guardar para metas reduz o saldo projetado</div>
+        <div class="proj-detail-left">
+          <span class="proj-chevron">›</span>
+          <span class="proj-row-icon goals">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+          </span>
+          <div>
+            <div style="font-weight:600;">Metas</div>
+            <div style="font-size:11.5px; color:var(--text-muted);">Guardar para metas reduz o saldo projetado</div>
+          </div>
         </div>
         <div style="display:flex; align-items:center; gap:12px;">
-          <b class="sensitive-val" style="color:#a78bfa;">-${fmtBRL(activeDetail.goalsCents)}</b>
+          <b class="sensitive-val" style="color:#a78bfa; font-size:14px;">-${fmtBRL(activeDetail.goalsCents)}</b>
           <label class="switch-toggle" title="Ativar/desativar reserva para metas na projeção">
             <input type="checkbox" id="toggle-proj-goals" ${projState.deductGoals ? 'checked' : ''} />
             <span class="switch-slider"></span>
@@ -2567,8 +2755,15 @@ function bindProjecaoEvents() {
 
   const prevBtn = document.getElementById('btn-proj-prev');
   const nextBtn = document.getElementById('btn-proj-next');
-  if (prevBtn) prevBtn.addEventListener('click', () => { projState.bannerIdx = Math.abs(projState.bannerIdx - 1); renderApp(); });
-  if (nextBtn) nextBtn.addEventListener('click', () => { projState.bannerIdx += 1; renderApp(); });
+  if (prevBtn) prevBtn.addEventListener('click', () => { projState.bannerIdx = (projState.bannerIdx - 1 + 3) % 3; renderApp(); });
+  if (nextBtn) nextBtn.addEventListener('click', () => { projState.bannerIdx = (projState.bannerIdx + 1) % 3; renderApp(); });
+
+  document.querySelectorAll('[data-proj-slide]').forEach(dot => {
+    dot.addEventListener('click', () => {
+      projState.bannerIdx = Number(dot.dataset.projSlide) || 0;
+      renderApp();
+    });
+  });
 
   const toggleGoals = document.getElementById('toggle-proj-goals');
   if (toggleGoals) {
