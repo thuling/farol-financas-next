@@ -1843,13 +1843,13 @@ function renderCategoriasView() {
 
     return `
       <div class="card" style="${cat.archived ? 'opacity:0.65;' : ''}">
-        <div class="card-header-row">
-          <div style="display:flex; align-items:center; gap:8px;">
-            <span class="cat-dot" style="background:${cat.color}; width:10px; height:10px;"></span>
-            <span style="font-weight:600;">${cat.name}</span>
+        <div class="card-header-row" style="gap:10px;">
+          <div style="display:flex; align-items:center; gap:8px; min-width:0; flex:1;">
+            <span class="cat-dot" style="background:${cat.color}; width:10px; height:10px; flex-shrink:0;"></span>
+            <span style="font-weight:600; overflow:hidden; text-overflow:ellipsis;">${cat.name}</span>
             ${cat.archived ? `<span class="tag-pill">Arquivada</span>` : ''}
           </div>
-          <div style="display:flex; align-items:center; gap:6px;">
+          <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
             <span class="cat-pct-badge sensitive-val">${fmtBRL(spentCents)}</span>
             <button class="btn-icon-edit" data-edit-cat="${cat.id}">✎ Editar</button>
           </div>

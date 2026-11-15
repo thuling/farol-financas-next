@@ -695,6 +695,8 @@ body::after {
   font-weight: 600;
   padding: 2px 7px;
   border-radius: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .cat-amount {
@@ -1150,6 +1152,8 @@ body::after {
   align-items: center;
   gap: 5px;
   font-family: inherit;
+  white-space: nowrap;
+  flex-shrink: 0;
   transition: all 0.15s;
 }
 
