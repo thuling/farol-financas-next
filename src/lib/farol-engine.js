@@ -13,10 +13,29 @@ function getTodayISO() {
   return `${y}-${m}-${d}`;
 }
 
+function getDefaultDateForSelectedMonth() {
+  const today = getTodayISO();
+  const selYM = state?.selectedMonth || '2026-11';
+  if (today.startsWith(selYM)) return today;
+  const day = String(Math.min(28, new Date().getDate())).padStart(2, '0');
+  return `${selYM}-${day}`;
+}
+
 function toCents(val) {
   if (typeof val === 'number') return Math.round(val * 100);
-  const cleaned = String(val || '0').replace(/\./g, '').replace(',', '.');
-  const num = parseFloat(cleaned);
+  const s = String(val ?? '').trim().replace(/[^\d.,-]/g, '');
+  if (!s) return 0;
+  let normalized = s;
+  if (s.includes(',') && s.includes('.')) {
+    if (s.lastIndexOf(',') > s.lastIndexOf('.')) {
+      normalized = s.replace(/\./g, '').replace(',', '.');
+    } else {
+      normalized = s.replace(/,/g, '');
+    }
+  } else if (s.includes(',')) {
+    normalized = s.replace(',', '.');
+  }
+  const num = parseFloat(normalized);
   return isNaN(num) ? 0 : Math.round(num * 100);
 }
 
@@ -59,8 +78,14 @@ function addMonthsYM(ym, delta) {
 // ISOLAMENTO POR USUÁRIO & ESTADO EM CENTAVOS
 // ============================================================
 function getUsersIndex() {
+  if (typeof window === 'undefined') {
+    return {
+      activeUserId: 'user-default',
+      users: [{ id: 'user-default', name: 'Meu nome' }]
+    };
+  }
   try {
-    const raw = localStorage.getItem(USERS_INDEX_KEY);
+    const raw = window.localStorage.getItem(USERS_INDEX_KEY);
     if (raw) return JSON.parse(raw);
   } catch (e) {}
   return {
@@ -70,7 +95,10 @@ function getUsersIndex() {
 }
 
 function saveUsersIndex(index) {
-  localStorage.setItem(USERS_INDEX_KEY, JSON.stringify(index));
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(USERS_INDEX_KEY, JSON.stringify(index));
+  } catch (e) {}
 }
 
 function getUserStorageKey(userId) {
@@ -233,17 +261,20 @@ function mergeDefaultCategories(targetState) {
 }
 
 function loadState() {
+  if (typeof window === 'undefined') {
+    return getDefaultState('Meu nome');
+  }
   const key = getUserStorageKey(usersIndex.activeUserId);
   try {
-    const raw = localStorage.getItem(key);
+    const raw = window.localStorage.getItem(key);
     if (raw) {
       return mergeDefaultCategories({ ...getDefaultState(), ...JSON.parse(raw) });
     }
     if (usersIndex.activeUserId === 'user-default') {
-      const legacyRaw = localStorage.getItem(LEGACY_V1_KEY);
+      const legacyRaw = window.localStorage.getItem(LEGACY_V1_KEY);
       if (legacyRaw) {
         const migrated = mergeDefaultCategories(migrateLegacyV1(JSON.parse(legacyRaw)));
-        localStorage.setItem(key, JSON.stringify(migrated));
+        window.localStorage.setItem(key, JSON.stringify(migrated));
         return migrated;
       }
     }
@@ -254,8 +285,16 @@ function loadState() {
 }
 
 function saveState() {
+  if (typeof window === 'undefined') return;
+  state.updatedAt = Date.now();
   const key = getUserStorageKey(usersIndex.activeUserId);
-  localStorage.setItem(key, JSON.stringify(state));
+  try {
+    window.localStorage.setItem(key, JSON.stringify(state));
+  } catch (e) {}
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => {
+    syncStateToCloud();
+  }, 450);
 }
 
 // ============================================================
@@ -436,7 +475,8 @@ function syncRecurrencesForMonth(ym = state.selectedMonth) {
       const targetAccId = r.accountId || state.accounts[0]?.id || 'acc-nubank';
       const targetAcc = getAccountById(targetAccId);
       const recType = r.type || 'expense';
-      const recMethod = (recType === 'expense' && targetAcc.type === 'Cartão de Crédito')
+      const isCardAccount = targetAcc.type === 'Cartão de Crédito' || targetAcc.type === 'Conta + Cartão';
+      const recMethod = (recType === 'expense' && isCardAccount)
         ? 'Cartão de Crédito'
         : 'Recorrência Automática';
       state.transactions.push({
@@ -826,17 +866,29 @@ function renderVisaoGeralRow4(m) {
         `;
       }).join('');
 
-  // Total de faturas em aberto no mês (respeitando fechamento)
+  // Total de faturas em aberto no mês (respeitando fechamento e filtrando apenas compras no cartão)
   let totalFaturasOpenCents = 0;
+  let totalFaturasPaidCents = 0;
   state.accounts.forEach(acc => {
     const meta = getInvoiceMeta(acc.id);
-    if (meta.status === 'paid') return;
     const txSum = state.transactions
-      .filter(t => t.accountId === acc.id && t.type === 'expense' && getInvoiceMonthForTransaction(t, acc) === state.selectedMonth)
+      .filter(t => {
+        if (t.accountId !== acc.id || t.type !== 'expense') return false;
+        if (t.method !== 'Cartão de Crédito' && acc.type !== 'Cartão de Crédito') return false;
+        return getInvoiceMonthForTransaction(t, acc) === state.selectedMonth;
+      })
       .reduce((s, t) => s + (Number(t.amountCents) || 0), 0);
-    totalFaturasOpenCents += Math.max(0, txSum + (Number(meta.adjustmentCents) || 0));
+    const invTotal = Math.max(0, txSum + (Number(meta.adjustmentCents) || 0));
+    if (meta.status === 'paid') {
+      totalFaturasPaidCents += invTotal;
+    } else {
+      totalFaturasOpenCents += invTotal;
+    }
   });
-  const saldoAposPagamentoCents = m.incomeCents - m.expenseCents - totalFaturasOpenCents;
+  const cashExpensesCents = m.txs
+    .filter(t => t.type === 'expense' && t.method !== 'Cartão de Crédito')
+    .reduce((s, t) => s + (Number(t.amountCents) || 0), 0);
+  const saldoAposPagamentoCents = m.incomeCents - cashExpensesCents - totalFaturasOpenCents - totalFaturasPaidCents;
 
   // Meta prioritária em destaque
   const topGoal = state.goals[1] || state.goals[0];
@@ -1459,6 +1511,11 @@ function bindRecorrenciasEvents() {
       const rec = state.recurrences.find(r => r.id === btn.dataset.toggleRec);
       if (!rec) return;
       rec.active = !rec.active;
+      if (!rec.active) {
+        state.transactions = state.transactions.filter(
+          t => !(t.recurrenceId === rec.id && (t.date || '').startsWith(state.selectedMonth))
+        );
+      }
       saveState();
       renderApp();
     });
@@ -1470,7 +1527,11 @@ function bindRecorrenciasEvents() {
 
   document.querySelectorAll('[data-del-rec]').forEach(btn => {
     btn.addEventListener('click', () => {
-      state.recurrences = state.recurrences.filter(r => r.id !== btn.dataset.delRec);
+      const delId = btn.dataset.delRec;
+      state.recurrences = state.recurrences.filter(r => r.id !== delId);
+      state.transactions = state.transactions.filter(
+        t => !(t.recurrenceId === delId && (t.date || '').startsWith(state.selectedMonth))
+      );
       saveState();
       renderApp();
     });
@@ -2639,7 +2700,7 @@ function openTransactionModal(preselectedAccountId = null, editTxId = null) {
     }
 
     const targetAcc = getAccountById(accSelect.value);
-    if (preselectedAccountId || targetAcc.type === 'Cartão de Crédito') {
+    if (preselectedAccountId || targetAcc.type === 'Cartão de Crédito' || targetAcc.type === 'Conta + Cartão') {
       document.getElementById('tx-method').value = 'Cartão de Crédito';
     } else {
       document.getElementById('tx-method').value = 'Conta Corrente / Pix';
@@ -2649,7 +2710,7 @@ function openTransactionModal(preselectedAccountId = null, editTxId = null) {
 
     document.getElementById('tx-type').value = 'expense';
     document.getElementById('tx-installments').value = '1';
-    document.getElementById('tx-date').value = getTodayISO();
+    document.getElementById('tx-date').value = getDefaultDateForSelectedMonth();
     document.getElementById('tx-amount').value = '';
     document.getElementById('tx-desc').value = '';
     document.getElementById('tx-tag').value = '';
@@ -2695,8 +2756,15 @@ function openProfileModal() {
 
 let farolInitialized = false;
 export function initFarolApp() {
-  if (farolInitialized) return;
+  usersIndex = getUsersIndex();
+  state = loadState();
+  const viewContainer = document.getElementById('view-container');
+  if (farolInitialized && viewContainer && viewContainer.dataset.bound === '1') {
+    renderApp();
+    return;
+  }
   farolInitialized = true;
+  if (viewContainer) viewContainer.dataset.bound = '1';
   document.querySelectorAll('.nav-item').forEach(btn => {
     btn.addEventListener('click', () => {
       state.currentTab = btn.dataset.tab;
@@ -3151,7 +3219,8 @@ export function initFarolApp() {
           existing.day = day;
           // Atualiza a transação gerada no mês selecionado para refletir imediatamente na fatura/conta
           const targetAcc = getAccountById(accountId);
-          const recMethod = (type === 'expense' && targetAcc.type === 'Cartão de Crédito')
+          const isCardAcc = targetAcc.type === 'Cartão de Crédito' || targetAcc.type === 'Conta + Cartão';
+          const recMethod = (type === 'expense' && isCardAcc)
             ? 'Cartão de Crédito'
             : 'Recorrência Automática';
           const dayStr = String(Math.min(28, Math.max(1, day))).padStart(2, '0');
@@ -3397,9 +3466,20 @@ async function hydrateFromCloud() {
     if (!res.ok) return;
     const data = await res.json();
     if (data && data.ok && data.state) {
-      state = data.state;
-      localStorage.setItem(getUserStorageKey(usersIndex.activeUserId), JSON.stringify(state));
-      renderApp();
+      const cloudState = mergeDefaultCategories({ ...getDefaultState(), ...data.state });
+      const localUpdated = Number(state?.updatedAt) || 0;
+      const cloudUpdated = Number(cloudState?.updatedAt) || 0;
+      if (cloudUpdated >= localUpdated) {
+        state = cloudState;
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(getUserStorageKey(usersIndex.activeUserId), JSON.stringify(state));
+        }
+        renderApp();
+      } else {
+        syncStateToCloud();
+      }
+    } else if (data && data.ok && !data.state) {
+      syncStateToCloud();
     }
   } catch {
     // Segue com cache local

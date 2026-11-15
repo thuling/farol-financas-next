@@ -109,6 +109,14 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
         <div class="topbar-actions">
           <!-- Seletor de Mês -->
           <select id="month-selector" class="month-pill" aria-label="Selecionar mês">
+            <option value="2026-01">janeiro de 2026 ▾</option>
+            <option value="2026-02">fevereiro de 2026 ▾</option>
+            <option value="2026-03">março de 2026 ▾</option>
+            <option value="2026-04">abril de 2026 ▾</option>
+            <option value="2026-05">maio de 2026 ▾</option>
+            <option value="2026-06">junho de 2026 ▾</option>
+            <option value="2026-07">julho de 2026 ▾</option>
+            <option value="2026-08">agosto de 2026 ▾</option>
             <option value="2026-09">setembro de 2026 ▾</option>
             <option value="2026-10">outubro de 2026 ▾</option>
             <option value="2026-11" selected>novembro de 2026 ▾</option>
@@ -119,6 +127,12 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
             <option value="2027-04">abril de 2027 ▾</option>
             <option value="2027-05">maio de 2027 ▾</option>
             <option value="2027-06">junho de 2027 ▾</option>
+            <option value="2027-07">julho de 2027 ▾</option>
+            <option value="2027-08">agosto de 2027 ▾</option>
+            <option value="2027-09">setembro de 2027 ▾</option>
+            <option value="2027-10">outubro de 2027 ▾</option>
+            <option value="2027-11">novembro de 2027 ▾</option>
+            <option value="2027-12">dezembro de 2027 ▾</option>
           </select>
 
           <!-- Botão Tema Claro / Escuro -->
