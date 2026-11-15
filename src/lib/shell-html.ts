@@ -486,6 +486,10 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
             <select id="rec-category" class="form-select"></select>
           </div>
         </div>
+        <div class="form-group">
+          <label class="form-label">Conta / Cartão</label>
+          <select id="rec-account" class="form-select"></select>
+        </div>
         <div class="modal-actions">
           <button type="button" class="btn-secondary" data-close-modal="modal-recurrence">Cancelar</button>
           <button type="submit" class="btn-primary">Salvar Recorrência</button>

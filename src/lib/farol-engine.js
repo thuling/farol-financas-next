@@ -433,17 +433,23 @@ function syncRecurrencesForMonth(ym = state.selectedMonth) {
     );
     if (!exists) {
       const dayStr = String(Math.min(28, Math.max(1, Number(r.day) || 10))).padStart(2, '0');
+      const targetAccId = r.accountId || state.accounts[0]?.id || 'acc-nubank';
+      const targetAcc = getAccountById(targetAccId);
+      const recType = r.type || 'expense';
+      const recMethod = (recType === 'expense' && targetAcc.type === 'Cartão de Crédito')
+        ? 'Cartão de Crédito'
+        : 'Recorrência Automática';
       state.transactions.push({
         id: `tx-${r.id}-${ym}`,
         recurrenceId: r.id,
-        type: r.type || 'expense',
+        type: recType,
         amountCents: Number(r.amountCents) || 0,
         description: r.description,
         tag: 'recorrente',
         categoryId: r.categoryId,
-        accountId: state.accounts[0]?.id || 'acc-nubank',
+        accountId: targetAccId,
         date: `${ym}-${dayStr}`,
-        method: 'Recorrência Automática'
+        method: recMethod
       });
       changed = true;
     }
@@ -1373,6 +1379,7 @@ function renderRecorrenciasView() {
 
   const listHtml = state.recurrences.map(r => {
     const cat = getCategoryById(r.categoryId);
+    const acc = getAccountById(r.accountId || state.accounts[0]?.id || 'acc-nubank');
     const statusPill = r.active
       ? `<span class="status-pill paid">Automática no mês</span>`
       : `<span class="status-pill closed">Pausada</span>`;
@@ -1382,6 +1389,7 @@ function renderRecorrenciasView() {
         <td>Todo dia <b>${r.day}</b></td>
         <td style="font-weight:600;">${r.description}</td>
         <td><span class="cat-dot" style="background:${cat.color}; display:inline-block; margin-right:6px;"></span>${cat.name}</td>
+        <td style="color:var(--text-secondary);">${acc.name}</td>
         <td>${statusPill}</td>
         <td class="sensitive-val" style="font-weight:700;">${fmtBRL(r.amountCents)}</td>
         <td style="text-align:right;">
@@ -1411,6 +1419,7 @@ function renderRecorrenciasView() {
             <th>Vencimento</th>
             <th>Descrição</th>
             <th>Categoria</th>
+            <th>Conta / Cartão</th>
             <th>Status</th>
             <th>Valor Mensal</th>
             <th style="text-align:right;">Ações</th>
@@ -2873,6 +2882,7 @@ export function initFarolApp() {
         amountCents,
         type,
         categoryId,
+        accountId,
         day,
         active: true
       });
@@ -2923,6 +2933,7 @@ export function initFarolApp() {
       const day = Math.min(31, Math.max(1, parseInt(document.getElementById('rec-day').value, 10) || 10));
       const type = document.getElementById('rec-type').value;
       const categoryId = document.getElementById('rec-category').value || (state.categories[0]?.id || 'cat-delivery');
+      const accountId = document.getElementById('rec-account').value || (state.accounts[0]?.id || 'acc-nubank');
       if (!desc || valCents <= 0) return;
 
       if (recId) {
@@ -2932,7 +2943,25 @@ export function initFarolApp() {
           existing.amountCents = valCents;
           existing.type = type;
           existing.categoryId = categoryId;
+          existing.accountId = accountId;
           existing.day = day;
+          // Atualiza a transação gerada no mês selecionado para refletir imediatamente na fatura/conta
+          const targetAcc = getAccountById(accountId);
+          const recMethod = (type === 'expense' && targetAcc.type === 'Cartão de Crédito')
+            ? 'Cartão de Crédito'
+            : 'Recorrência Automática';
+          const dayStr = String(Math.min(28, Math.max(1, day))).padStart(2, '0');
+          state.transactions.forEach(t => {
+            if (t.recurrenceId === recId && (t.date || '').startsWith(state.selectedMonth)) {
+              t.description = desc;
+              t.amountCents = valCents;
+              t.type = type;
+              t.categoryId = categoryId;
+              t.accountId = accountId;
+              t.method = recMethod;
+              t.date = `${state.selectedMonth}-${dayStr}`;
+            }
+          });
         }
       } else {
         state.recurrences.push({
@@ -2941,6 +2970,7 @@ export function initFarolApp() {
           amountCents: valCents,
           type,
           categoryId,
+          accountId,
           day,
           active: true
         });
@@ -3000,6 +3030,13 @@ function openRecurrenceModal(recId = null) {
   if (catSelect) {
     const activeCats = state.categories.filter(c => !c.archived);
     catSelect.innerHTML = activeCats.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  }
+  const accSelect = document.getElementById('rec-account');
+  if (accSelect) {
+    accSelect.innerHTML = state.accounts
+      .map(a => `<option value="${a.id}">${a.name} (${a.type})</option>`)
+      .join('');
+    accSelect.value = rec?.accountId || state.lastUsedAccountId || state.accounts[0]?.id || '';
   }
   document.getElementById('modal-rec-title').textContent = rec ? 'Editar Recorrência' : 'Nova Recorrência';
   document.getElementById('rec-id').value = rec ? rec.id : '';
