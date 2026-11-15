@@ -1385,7 +1385,8 @@ function renderRecorrenciasView() {
         <td>${statusPill}</td>
         <td class="sensitive-val" style="font-weight:700;">${fmtBRL(r.amountCents)}</td>
         <td style="text-align:right;">
-          <div style="display:flex; gap:8px; justify-content:flex-end;">
+          <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:nowrap;">
+            <button class="btn-icon-edit" data-edit-rec="${r.id}">✎ Editar</button>
             <button class="btn-secondary" data-toggle-rec="${r.id}">${r.active ? 'Pausar' : 'Ativar Automático'}</button>
             <button class="btn-danger-ghost" data-del-rec="${r.id}">Remover</button>
           </div>
@@ -1430,6 +1431,10 @@ function bindRecorrenciasEvents() {
       saveState();
       renderApp();
     });
+  });
+
+  document.querySelectorAll('[data-edit-rec]').forEach(btn => {
+    btn.addEventListener('click', () => openRecurrenceModal(btn.dataset.editRec));
   });
 
   document.querySelectorAll('[data-del-rec]').forEach(btn => {
@@ -2907,11 +2912,12 @@ export function initFarolApp() {
     renderApp();
   });
 
-  // Salvar Nova Recorrência
+  // Salvar Nova / Editar Recorrência
   const formRec = document.getElementById('form-recurrence');
   if (formRec) {
     formRec.addEventListener('submit', (e) => {
       e.preventDefault();
+      const recId = document.getElementById('rec-id').value;
       const desc = document.getElementById('rec-desc').value.trim();
       const valCents = toCents(document.getElementById('rec-amount').value);
       const day = Math.min(31, Math.max(1, parseInt(document.getElementById('rec-day').value, 10) || 10));
@@ -2919,15 +2925,26 @@ export function initFarolApp() {
       const categoryId = document.getElementById('rec-category').value || (state.categories[0]?.id || 'cat-delivery');
       if (!desc || valCents <= 0) return;
 
-      state.recurrences.push({
-        id: 'rec-' + Date.now(),
-        description: desc,
-        amountCents: valCents,
-        type,
-        categoryId,
-        day,
-        active: true
-      });
+      if (recId) {
+        const existing = state.recurrences.find(r => r.id === recId);
+        if (existing) {
+          existing.description = desc;
+          existing.amountCents = valCents;
+          existing.type = type;
+          existing.categoryId = categoryId;
+          existing.day = day;
+        }
+      } else {
+        state.recurrences.push({
+          id: 'rec-' + Date.now(),
+          description: desc,
+          amountCents: valCents,
+          type,
+          categoryId,
+          day,
+          active: true
+        });
+      }
       saveState();
       document.getElementById('modal-recurrence').classList.remove('open');
       renderApp();
@@ -2977,16 +2994,22 @@ export function initFarolApp() {
 // ============================================================
 // MODAIS AUXILIARES: RECORRÊNCIA, CONTA & DIÁLOGO ESTILIZADO
 // ============================================================
-function openRecurrenceModal() {
+function openRecurrenceModal(recId = null) {
+  const rec = recId ? state.recurrences.find(r => r.id === recId) : null;
   const catSelect = document.getElementById('rec-category');
   if (catSelect) {
     const activeCats = state.categories.filter(c => !c.archived);
     catSelect.innerHTML = activeCats.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   }
-  document.getElementById('rec-desc').value = '';
-  document.getElementById('rec-amount').value = '';
-  document.getElementById('rec-day').value = '10';
-  document.getElementById('rec-type').value = 'expense';
+  document.getElementById('modal-rec-title').textContent = rec ? 'Editar Recorrência' : 'Nova Recorrência';
+  document.getElementById('rec-id').value = rec ? rec.id : '';
+  document.getElementById('rec-desc').value = rec ? rec.description : '';
+  document.getElementById('rec-amount').value = rec ? fromCents(rec.amountCents).toFixed(2) : '';
+  document.getElementById('rec-day').value = rec ? String(rec.day) : '10';
+  document.getElementById('rec-type').value = rec ? (rec.type || 'expense') : 'expense';
+  if (rec && catSelect && rec.categoryId) {
+    catSelect.value = rec.categoryId;
+  }
   document.getElementById('modal-recurrence').classList.add('open');
   setTimeout(() => document.getElementById('rec-desc').focus(), 40);
 }

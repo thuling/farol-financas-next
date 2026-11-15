@@ -454,10 +454,11 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
   <div class="modal-backdrop" id="modal-recurrence">
     <div class="modal-card">
       <div class="modal-header">
-        <h3 class="modal-title">Nova Recorrência</h3>
+        <h3 class="modal-title" id="modal-rec-title">Nova Recorrência</h3>
         <button type="button" class="modal-close-btn" data-close-modal="modal-recurrence" aria-label="Fechar">✕</button>
       </div>
       <form id="form-recurrence">
+        <input type="hidden" id="rec-id" />
         <div class="form-group">
           <label class="form-label">Nome da assinatura ou conta fixa</label>
           <input type="text" id="rec-desc" class="form-input" placeholder="Ex: Academia, Aluguel, Internet" required />
