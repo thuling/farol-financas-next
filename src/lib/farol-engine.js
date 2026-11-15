@@ -2771,7 +2771,14 @@ export function initFarolApp() {
       saveState();
       renderApp();
       try {
-        btn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        const navScroll = btn.closest('.sidebar-nav-scroll');
+        if (navScroll && navScroll.scrollWidth > navScroll.clientWidth) {
+          const targetLeft = btn.offsetLeft - (navScroll.clientWidth / 2) + (btn.offsetWidth / 2);
+          navScroll.scrollTo({ left: Math.max(0, targetLeft), behavior: 'smooth' });
+        }
+        if (window.scrollX !== 0) {
+          window.scrollTo({ left: 0, top: window.scrollY });
+        }
       } catch {
         // fallback silencioso
       }
