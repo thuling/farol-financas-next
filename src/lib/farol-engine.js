@@ -2003,10 +2003,21 @@ function renderPatrimonioView() {
     'Reserva / Outros': '#94a3b8'
   };
 
+  const calcAssetMonthlyYieldCents = (asset) => {
+    const amtCents = Number(asset.amountCents) || 0;
+    const basePct = asset.cdbPercent !== undefined ? Number(asset.cdbPercent) : 100;
+    const capCents = Number(asset.promoCapCents) || 0;
+    const excessPct = asset.excessCdbPercent !== undefined ? Number(asset.excessCdbPercent) : 100;
+    if (capCents > 0 && amtCents > capCents) {
+      return calcMonthlyYieldCents(capCents, basePct, cdiRate)
+        + calcMonthlyYieldCents(amtCents - capCents, excessPct, cdiRate);
+    }
+    return calcMonthlyYieldCents(amtCents, basePct, cdiRate);
+  };
+
   state.assets.forEach(a => {
-    const cdbPct = a.cdbPercent !== undefined ? Number(a.cdbPercent) : 100;
     const amtCents = Number(a.amountCents) || 0;
-    totalMonthlyYieldCents += calcMonthlyYieldCents(amtCents, cdbPct, cdiRate);
+    totalMonthlyYieldCents += calcAssetMonthlyYieldCents(a);
     classTotals[a.category] = (classTotals[a.category] || 0) + amtCents;
   });
 
@@ -2033,8 +2044,13 @@ function renderPatrimonioView() {
     : state.assets.map(a => {
         const cdbPct = a.cdbPercent !== undefined ? Number(a.cdbPercent) : 100;
         const amtCents = Number(a.amountCents) || 0;
-        const monthlyYieldCents = calcMonthlyYieldCents(amtCents, cdbPct, cdiRate);
+        const capCents = Number(a.promoCapCents) || 0;
+        const excessPct = a.excessCdbPercent !== undefined ? Number(a.excessCdbPercent) : 100;
+        const monthlyYieldCents = calcAssetMonthlyYieldCents(a);
         const col = classColors[a.category] || '#49b6eb';
+        const tierNote = capCents > 0
+          ? `<div style="font-size:10.5px; color:var(--text-muted); margin-top:4px;">Até ${fmtBRL(capCents)} · ${excessPct}% exced.</div>`
+          : '';
 
         return `
           <tr>
@@ -2052,6 +2068,7 @@ function renderPatrimonioView() {
               <button class="cdb-badge" data-quick-cdb="${a.id}" title="Clique para alterar a % do CDI / CDB">
                 ${cdbPct}% CDI ✎
               </button>
+              ${tierNote}
             </td>
             <td class="sensitive-val" style="color:var(--green-emerald); font-weight:600;">
               +${fmtBRL(monthlyYieldCents)}/mês
@@ -2147,6 +2164,8 @@ function openAssetModal(assetId) {
   document.getElementById('ast-cdb-pct').value = asset.cdbPercent ?? 100;
   document.getElementById('ast-institution').value = asset.institution || '';
   document.getElementById('ast-liquidity').value = asset.liquidity || 'Diária';
+  document.getElementById('ast-promo-cap').value = asset.promoCapCents > 0 ? fromCents(asset.promoCapCents).toFixed(2) : '';
+  document.getElementById('ast-excess-pct').value = asset.excessCdbPercent !== undefined ? asset.excessCdbPercent : 100;
 
   const delBtn = document.getElementById('btn-delete-asset');
   delBtn.style.display = !isNew ? 'inline-flex' : 'none';
@@ -2764,6 +2783,9 @@ export function initFarolApp() {
     const cdbPercent = parseFloat(document.getElementById('ast-cdb-pct').value);
     const institution = document.getElementById('ast-institution').value.trim() || 'Instituição';
     const liquidity = document.getElementById('ast-liquidity').value;
+    const promoCapCents = toCents(document.getElementById('ast-promo-cap').value);
+    const excessRaw = parseFloat(document.getElementById('ast-excess-pct').value);
+    const excessCdbPercent = isNaN(excessRaw) ? 100 : excessRaw;
 
     if (!name) return;
 
@@ -2775,6 +2797,8 @@ export function initFarolApp() {
         asset.category = category;
         asset.amountCents = amountCents;
         asset.cdbPercent = isNaN(cdbPercent) ? 100 : cdbPercent;
+        asset.promoCapCents = promoCapCents > 0 ? promoCapCents : 0;
+        asset.excessCdbPercent = excessCdbPercent;
         asset.institution = institution;
         asset.liquidity = liquidity;
       }
@@ -2785,6 +2809,8 @@ export function initFarolApp() {
         category,
         amountCents,
         cdbPercent: isNaN(cdbPercent) ? 100 : cdbPercent,
+        promoCapCents: promoCapCents > 0 ? promoCapCents : 0,
+        excessCdbPercent,
         institution,
         liquidity,
         weeklyDeltaCents: amountCents

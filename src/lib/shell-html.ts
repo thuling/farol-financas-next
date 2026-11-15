@@ -401,6 +401,16 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
             </select>
           </div>
         </div>
+        <div class="form-row-2">
+          <div class="form-group">
+            <label class="form-label">Teto da taxa principal (R$, opcional)</label>
+            <input type="number" step="0.01" min="0" id="ast-promo-cap" class="form-input" placeholder="Ex: 10000.00 (0 = sem teto)" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">% do CDI acima do teto</label>
+            <input type="number" step="0.5" min="0" max="500" id="ast-excess-pct" class="form-input" placeholder="Ex: 100" />
+          </div>
+        </div>
         <div class="modal-actions-split">
           <button type="button" class="btn-danger-ghost" id="btn-delete-asset">Excluir Ativo</button>
           <div style="display:flex; gap:8px;">
