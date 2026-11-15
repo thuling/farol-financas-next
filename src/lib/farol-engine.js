@@ -3066,6 +3066,25 @@ export function initFarolApp() {
     });
   }
 
+  const delAccBtn = document.getElementById('btn-delete-account');
+  if (delAccBtn) {
+    delAccBtn.addEventListener('click', () => {
+      const accId = document.getElementById('acc-id').value;
+      if (!accId || state.accounts.length <= 1) return;
+      document.getElementById('modal-account').classList.remove('open');
+      openDialogModal({
+        title: 'Excluir conta ou cartão',
+        message: 'Tem certeza que deseja excluir esta conta? Os lançamentos existentes permanecerão no histórico.',
+        confirmLabel: 'Excluir',
+        onConfirm: () => {
+          state.accounts = state.accounts.filter(a => a.id !== accId);
+          saveState();
+          renderApp();
+        }
+      });
+    });
+  }
+
   renderApp();
   hydrateFromCloud();
 }
@@ -3113,6 +3132,8 @@ function openAccountModal(accId = null) {
   const cardRow = document.getElementById('acc-card-dates-row');
   const showCardDates = !acc || acc.type === 'Cartão de Crédito' || acc.type === 'Conta + Cartão';
   if (cardRow) cardRow.style.display = showCardDates ? 'grid' : 'none';
+  const delAccBtn = document.getElementById('btn-delete-account');
+  if (delAccBtn) delAccBtn.style.display = (acc && state.accounts.length > 1) ? 'inline-flex' : 'none';
   document.getElementById('modal-account').classList.add('open');
   setTimeout(() => document.getElementById('acc-name').focus(), 40);
 }

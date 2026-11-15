@@ -551,9 +551,12 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
             <input type="number" min="1" max="31" id="acc-due-day" class="form-input" value="12" />
           </div>
         </div>
-        <div class="modal-actions">
-          <button type="button" class="btn-secondary" data-close-modal="modal-account">Cancelar</button>
-          <button type="submit" class="btn-primary">Salvar Conta</button>
+        <div class="modal-actions-split">
+          <button type="button" class="btn-danger-ghost" id="btn-delete-account">Excluir Conta</button>
+          <div style="display:flex; gap:8px;">
+            <button type="button" class="btn-secondary" data-close-modal="modal-account">Cancelar</button>
+            <button type="submit" class="btn-primary">Salvar Conta</button>
+          </div>
         </div>
       </form>
     </div>
