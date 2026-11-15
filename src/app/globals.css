@@ -34,6 +34,7 @@
 /* Tema Claro */
 [data-theme="light"] {
   color-scheme: light;
+  --ring-track: rgba(15, 35, 50, 0.12);
   --bg-deep: #eef3f7;
   --bg-sidebar: rgba(255, 255, 255, 0.92);
   --bg-card: rgba(255, 255, 255, 0.85);
@@ -118,6 +119,64 @@
 
 [data-theme="light"] .card-featured-cyan {
   background: linear-gradient(180deg, #ffffff 0%, #f3f9fd 100%);
+}
+
+[data-theme="light"] .reserve-ring-label {
+  color: #0f1e28;
+}
+
+[data-theme="light"] .segmented-tabs {
+  background: rgba(15, 35, 50, 0.07);
+  border-color: rgba(15, 35, 50, 0.1);
+}
+
+[data-theme="light"] .seg-btn {
+  color: #4c6473;
+}
+
+[data-theme="light"] .seg-btn.active {
+  background: #0f1e28;
+  color: #ffffff;
+}
+
+[data-theme="light"] .badge-pill-dark {
+  background: rgba(15, 35, 50, 0.08);
+  border-color: rgba(15, 35, 50, 0.12);
+  color: #0f1e28;
+}
+
+[data-theme="light"] .cat-pct-badge {
+  background: rgba(15, 35, 50, 0.07);
+  color: #3c5363;
+}
+
+[data-theme="light"] .insight-alert-box {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(217, 119, 6, 0.28);
+}
+
+[data-theme="light"] .insight-title {
+  color: #78350f;
+}
+
+[data-theme="light"] .insight-desc {
+  color: #92400e;
+}
+
+[data-theme="light"] .month-pill,
+[data-theme="light"] .icon-circle-btn {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(15, 35, 50, 0.12);
+  color: #0f1e28;
+}
+
+[data-theme="light"] .donut-center-sub,
+[data-theme="light"] .cat-progress-track {
+  color: #4c6473;
+}
+
+[data-theme="light"] .cat-progress-track {
+  background: rgba(15, 35, 50, 0.08);
 }
 
 * {

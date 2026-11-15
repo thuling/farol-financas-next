@@ -1030,7 +1030,7 @@ function buildReserveRingSvg(pct) {
   const dash = (pct / 100) * c;
   return `
     <svg width="78" height="78" viewBox="0 0 78 78">
-      <circle cx="39" cy="39" r="${r}" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="7"/>
+      <circle cx="39" cy="39" r="${r}" fill="none" stroke="var(--ring-track, rgba(255,255,255,0.08))" stroke-width="7"/>
       <circle cx="39" cy="39" r="${r}" fill="none" stroke="#f59e0b" stroke-width="7"
         stroke-dasharray="${dash} ${c - dash}" transform="rotate(-90 39 39)" stroke-linecap="round"/>
       <circle cx="39" cy="8" r="3.8" fill="#f59e0b"/>
