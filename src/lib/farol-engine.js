@@ -927,21 +927,32 @@ function bindChartTooltips() {
   if (!tip) return;
   const hideTip = () => tip.classList.remove('visible');
 
+  const showAt = (el, clientX, clientY) => {
+    const title = el.dataset.tipTitle || '';
+    const val = el.dataset.tipVal || '';
+    const hidden = state.privacyMode ? '•••' : val;
+    tip.innerHTML = `<div class="tooltip-title">${title}</div><div class="tooltip-value">${hidden}</div>`;
+    tip.classList.add('visible');
+    const clampedX = Math.min(window.innerWidth - 90, Math.max(90, clientX));
+    tip.style.left = `${clampedX}px`;
+    tip.style.top = `${Math.max(48, clientY - 8)}px`;
+  };
+
   document.querySelectorAll('[data-tip-title]').forEach(el => {
-    el.addEventListener('mouseenter', (e) => {
-      const title = el.dataset.tipTitle || '';
-      const val = el.dataset.tipVal || '';
-      const hidden = state.privacyMode ? '•••' : val;
-      tip.innerHTML = `<div class="tooltip-title">${title}</div><div class="tooltip-value">${hidden}</div>`;
-      tip.classList.add('visible');
-      tip.style.left = `${e.clientX}px`;
-      tip.style.top = `${e.clientY - 8}px`;
-    });
+    el.addEventListener('mouseenter', (e) => showAt(el, e.clientX, e.clientY));
     el.addEventListener('mousemove', (e) => {
-      tip.style.left = `${e.clientX}px`;
-      tip.style.top = `${e.clientY - 8}px`;
+      const clampedX = Math.min(window.innerWidth - 90, Math.max(90, e.clientX));
+      tip.style.left = `${clampedX}px`;
+      tip.style.top = `${Math.max(48, e.clientY - 8)}px`;
     });
     el.addEventListener('mouseleave', hideTip);
+    el.addEventListener('touchstart', (e) => {
+      const t = e.touches && e.touches[0];
+      if (t) showAt(el, t.clientX, t.clientY);
+    }, { passive: true });
+    el.addEventListener('touchend', () => {
+      setTimeout(hideTip, 1600);
+    }, { passive: true });
   });
 }
 
@@ -1223,21 +1234,23 @@ function renderTransacoesView() {
 
       ${batchBar}
 
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th style="width:32px;"><input type="checkbox" id="tx-select-all" ${allSelected ? 'checked' : ''} /></th>
-            <th>Data</th>
-            <th>Descrição / Tag</th>
-            <th>Categoria</th>
-            <th>Conta / Método</th>
-            <th>Tipo</th>
-            <th>Valor</th>
-            <th style="text-align:right;">Ações</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
+      <div class="table-responsive-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th style="width:32px;"><input type="checkbox" id="tx-select-all" ${allSelected ? 'checked' : ''} /></th>
+              <th>Data</th>
+              <th>Descrição / Tag</th>
+              <th>Categoria</th>
+              <th>Conta / Método</th>
+              <th>Tipo</th>
+              <th>Valor</th>
+              <th style="text-align:right;">Ações</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
     </div>
   `;
 }
@@ -1420,20 +1433,22 @@ function renderRecorrenciasView() {
         <button class="btn-primary" id="btn-add-rec">+ Nova Recorrência</button>
       </div>
 
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>Vencimento</th>
-            <th>Descrição</th>
-            <th>Categoria</th>
-            <th>Conta / Cartão</th>
-            <th>Status</th>
-            <th>Valor Mensal</th>
-            <th style="text-align:right;">Ações</th>
-          </tr>
-        </thead>
-        <tbody>${listHtml}</tbody>
-      </table>
+      <div class="table-responsive-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Vencimento</th>
+              <th>Descrição</th>
+              <th>Categoria</th>
+              <th>Conta / Cartão</th>
+              <th>Status</th>
+              <th>Valor Mensal</th>
+              <th style="text-align:right;">Ações</th>
+            </tr>
+          </thead>
+          <tbody>${listHtml}</tbody>
+        </table>
+      </div>
     </div>
   `;
 }
@@ -1549,7 +1564,7 @@ function renderFluxoCaixaView() {
       ${gridLines}
       ${svgBars}
     </svg>
-    <div style="display:grid; grid-template-columns:repeat(6, 1fr); gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid var(--border-subtle); text-align:center;">
+    <div class="history-months-grid">
       ${historyMonths.map(h => `
         <div style="font-size:11px;">
           <div style="color:var(--text-muted); margin-bottom:2px;">Saldo ${h.label}</div>
@@ -1587,7 +1602,7 @@ function renderFluxoCaixaView() {
       </button>
     </div>
 
-    <div class="faturas-summary-grid" style="grid-template-columns: repeat(4, minmax(0, 1fr));">
+    <div class="faturas-summary-grid cols-4">
       <div class="card">
         <div class="card-title">Total de Entradas</div>
         <div class="partial-value positive sensitive-val" style="font-size:23px;">${fmtBRL(m.incomeCents)}</div>
@@ -1613,7 +1628,7 @@ function renderFluxoCaixaView() {
       </div>
     </div>
 
-    <div class="dashboard-row-2" style="grid-template-columns: 1.25fr 1fr; gap: 22px;">
+    <div class="dashboard-row-2 fluxo-split-grid">
       <div class="card">
         <div class="card-header-row">
           <span class="card-title" style="font-size:15px;">Evolução Mensal (Últimos 6 Meses)</span>
@@ -2151,20 +2166,22 @@ function renderPatrimonioView() {
     </div>
 
     <div class="card">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>Ativo / Liquidez</th>
-            <th>Classe</th>
-            <th>Rentabilidade (% CDI)</th>
-            <th>Rendimento Est.</th>
-            <th>Saldo Atual</th>
-            <th>Semana</th>
-            <th style="text-align:right;">Ações</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
+      <div class="table-responsive-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Ativo / Liquidez</th>
+              <th>Classe</th>
+              <th>Rentabilidade (% CDI)</th>
+              <th>Rendimento Est.</th>
+              <th>Saldo Atual</th>
+              <th>Semana</th>
+              <th style="text-align:right;">Ações</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
     </div>
   `;
 }
@@ -2685,6 +2702,11 @@ export function initFarolApp() {
       state.currentTab = btn.dataset.tab;
       saveState();
       renderApp();
+      try {
+        btn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+      } catch {
+        // fallback silencioso
+      }
     });
   });
 
