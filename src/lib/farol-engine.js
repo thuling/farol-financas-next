@@ -1822,6 +1822,16 @@ function bindFaturasEvents() {
   if (btnNewCard) btnNewCard.addEventListener('click', () => openInvoiceModal(null));
 }
 
+function updateInvoiceLiveSummary() {
+  const cDay = parseInt(document.getElementById('inv-closing-day')?.value, 10) || 5;
+  const dDay = parseInt(document.getElementById('inv-due-day')?.value, 10) || 12;
+  const limCents = toCents(document.getElementById('inv-limit')?.value);
+  const cycleEl = document.getElementById('inv-live-cycle');
+  const limEl = document.getElementById('inv-live-limit');
+  if (cycleEl) cycleEl.textContent = `Fecha dia ${cDay} · Vence dia ${dDay}`;
+  if (limEl) limEl.textContent = fmtBRL(limCents);
+}
+
 function openInvoiceModal(accountId) {
   const isNew = !accountId;
   const acc = isNew
@@ -1831,14 +1841,17 @@ function openInvoiceModal(accountId) {
   if (!acc) return;
   const meta = isNew ? { status: 'open', adjustmentCents: 0 } : getInvoiceMeta(acc.id);
 
-  document.getElementById('modal-inv-title').textContent = isNew ? 'Novo Cartão / Fatura' : `Editar Fatura — ${acc.name}`;
+  document.getElementById('modal-inv-title').textContent = isNew ? 'Novo cartão / fatura' : `Editar fatura — ${acc.name}`;
   document.getElementById('inv-account-id').value = acc.id;
   document.getElementById('inv-name').value = acc.name;
   document.getElementById('inv-status').value = meta.status || 'open';
+  syncSegmentedControl('inv-status');
   document.getElementById('inv-limit').value = fromCents(acc.limitCents || 200000).toFixed(2);
   document.getElementById('inv-manual-adj').value = fromCents(meta.adjustmentCents || 0).toFixed(2);
   document.getElementById('inv-closing-day').value = acc.closingDay || 5;
   document.getElementById('inv-due-day').value = acc.dueDay || 12;
+
+  updateInvoiceLiveSummary();
 
   const delBtn = document.getElementById('btn-delete-invoice');
   delBtn.style.display = (!isNew && state.accounts.length > 1) ? 'inline-flex' : 'none';
@@ -2156,6 +2169,28 @@ function renderPatrimonioView() {
   `;
 }
 
+function updateAssetLiveSummary() {
+  const cdiRate = Number(state.cdiRate) || 11.25;
+  const amtCents = toCents(document.getElementById('ast-amount')?.value);
+  const basePct = parseFloat(document.getElementById('ast-cdb-pct')?.value);
+  const capCents = toCents(document.getElementById('ast-promo-cap')?.value);
+  const excessRaw = parseFloat(document.getElementById('ast-excess-pct')?.value);
+  const effBase = isNaN(basePct) ? 100 : basePct;
+  const effExcess = isNaN(excessRaw) ? 100 : excessRaw;
+
+  let monthlyCents = 0;
+  if (capCents > 0 && amtCents > capCents) {
+    monthlyCents = calcMonthlyYieldCents(capCents, effBase, cdiRate)
+      + calcMonthlyYieldCents(amtCents - capCents, effExcess, cdiRate);
+  } else {
+    monthlyCents = calcMonthlyYieldCents(amtCents, effBase, cdiRate);
+  }
+  const mEl = document.getElementById('ast-live-monthly');
+  const aEl = document.getElementById('ast-live-annual');
+  if (mEl) mEl.textContent = `+${fmtBRL(monthlyCents)}/mês`;
+  if (aEl) aEl.textContent = `+${fmtBRL(monthlyCents * 12)}/ano`;
+}
+
 function openAssetModal(assetId) {
   const isNew = !assetId;
   const asset = isNew
@@ -2164,7 +2199,7 @@ function openAssetModal(assetId) {
 
   if (!asset) return;
 
-  document.getElementById('modal-asset-title').textContent = isNew ? 'Novo Ativo / Investimento' : `Editar Ativo — ${asset.name}`;
+  document.getElementById('modal-asset-title').textContent = isNew ? 'Novo ativo / investimento' : `Editar ativo — ${asset.name}`;
   document.getElementById('ast-id').value = asset.id;
   document.getElementById('ast-name').value = asset.name;
   document.getElementById('ast-category').value = asset.category === 'Renda Fixa' ? 'Renda Fixa (CDB)' : (asset.category || 'Renda Fixa (CDB)');
@@ -2174,6 +2209,8 @@ function openAssetModal(assetId) {
   document.getElementById('ast-liquidity').value = asset.liquidity || 'Diária';
   document.getElementById('ast-promo-cap').value = asset.promoCapCents > 0 ? fromCents(asset.promoCapCents).toFixed(2) : '';
   document.getElementById('ast-excess-pct').value = asset.excessCdbPercent !== undefined ? asset.excessCdbPercent : 100;
+
+  updateAssetLiveSummary();
 
   const delBtn = document.getElementById('btn-delete-asset');
   delBtn.style.display = !isNew ? 'inline-flex' : 'none';
@@ -2541,6 +2578,15 @@ function renderQuickCategoryChips(selectedId) {
   });
 }
 
+function syncSegmentedControl(selectId) {
+  const sel = document.getElementById(selectId);
+  const group = document.querySelector(`[data-seg-for="${selectId}"]`);
+  if (!sel || !group) return;
+  group.querySelectorAll('[data-seg-val]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.segVal === sel.value);
+  });
+}
+
 function openTransactionModal(preselectedAccountId = null, editTxId = null) {
   const editTx = editTxId ? state.transactions.find(t => t.id === editTxId) : null;
   manualCategoryPicked = Boolean(editTx);
@@ -2550,7 +2596,9 @@ function openTransactionModal(preselectedAccountId = null, editTxId = null) {
     .join('');
 
   document.getElementById('tx-id').value = editTx ? editTx.id : '';
-  document.getElementById('modal-tx-title').textContent = editTx ? 'Editar Transação' : 'Lançamento Rápido';
+  document.getElementById('modal-tx-title').textContent = editTx ? 'Editar transação' : 'Lançamento rápido';
+  const delTxBtn = document.getElementById('btn-delete-transaction');
+  if (delTxBtn) delTxBtn.style.display = editTx ? 'inline-flex' : 'none';
 
   if (editTx) {
     if (editTx.accountId && state.accounts.some(a => a.id === editTx.accountId)) {
@@ -2589,9 +2637,10 @@ function openTransactionModal(preselectedAccountId = null, editTxId = null) {
     document.getElementById('tx-desc').value = '';
     document.getElementById('tx-tag').value = '';
     document.getElementById('tx-is-recurring').checked = false;
-    document.getElementById('quick-more-details').open = false;
+    document.getElementById('quick-more-details').open = true;
   }
 
+  syncSegmentedControl('tx-type');
   updateInstallmentUI();
   document.getElementById('modal-transaction').classList.add('open');
   setTimeout(() => document.getElementById('tx-amount').focus(), 60);
@@ -2673,6 +2722,62 @@ export function initFarolApp() {
       if (e.target === backdrop) backdrop.classList.remove('open');
     });
   });
+
+  // Segmented controls (Tipo / Status)
+  document.querySelectorAll('[data-seg-for]').forEach(group => {
+    const selectId = group.dataset.segFor;
+    const sel = document.getElementById(selectId);
+    group.querySelectorAll('[data-seg-val]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (sel) {
+          sel.value = btn.dataset.segVal;
+          sel.dispatchEvent(new Event('change'));
+        }
+        syncSegmentedControl(selectId);
+      });
+    });
+  });
+
+  // Live summary listeners nos modais
+  ['inv-limit', 'inv-closing-day', 'inv-due-day'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', updateInvoiceLiveSummary);
+  });
+
+  ['ast-amount', 'ast-cdb-pct', 'ast-promo-cap', 'ast-excess-pct'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', updateAssetLiveSummary);
+  });
+
+  ['rec-amount', 'rec-day'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', updateRecurrenceLiveSummary);
+  });
+
+  const delTxBtn = document.getElementById('btn-delete-transaction');
+  if (delTxBtn) {
+    delTxBtn.addEventListener('click', () => {
+      const txId = document.getElementById('tx-id').value;
+      if (!txId) return;
+      state.transactions = state.transactions.filter(t => t.id !== txId);
+      saveState();
+      document.getElementById('modal-transaction').classList.remove('open');
+      renderApp();
+    });
+  }
+
+  const delRecBtn = document.getElementById('btn-delete-recurrence');
+  if (delRecBtn) {
+    delRecBtn.addEventListener('click', () => {
+      const recId = document.getElementById('rec-id').value;
+      if (!recId) return;
+      state.recurrences = state.recurrences.filter(r => r.id !== recId);
+      state.transactions = state.transactions.filter(t => !(t.recurrenceId === recId && (t.date || '').startsWith(state.selectedMonth)));
+      saveState();
+      document.getElementById('modal-recurrence').classList.remove('open');
+      renderApp();
+    });
+  }
 
   // Desfazer edição em lote
   document.getElementById('btn-undo-batch').addEventListener('click', () => {
@@ -3133,6 +3238,18 @@ export function initFarolApp() {
 // ============================================================
 // MODAIS AUXILIARES: RECORRÊNCIA, CONTA & DIÁLOGO ESTILIZADO
 // ============================================================
+function updateRecurrenceLiveSummary() {
+  const valCents = toCents(document.getElementById('rec-amount')?.value);
+  const day = Math.min(31, Math.max(1, parseInt(document.getElementById('rec-day')?.value, 10) || 10));
+  const [yStr, mStr] = (state.selectedMonth || '2026-12').split('-');
+  const shortMonths = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  const mLabel = shortMonths[(parseInt(mStr, 10) || 12) - 1] || 'dez';
+  const nextEl = document.getElementById('rec-live-next');
+  const annEl = document.getElementById('rec-live-annual');
+  if (nextEl) nextEl.textContent = `${String(day).padStart(2, '0')} de ${mLabel} de ${yStr}`;
+  if (annEl) annEl.textContent = fmtBRL(valCents * 12);
+}
+
 function openRecurrenceModal(recId = null) {
   const rec = recId ? state.recurrences.find(r => r.id === recId) : null;
   const catSelect = document.getElementById('rec-category');
@@ -3147,15 +3264,19 @@ function openRecurrenceModal(recId = null) {
       .join('');
     accSelect.value = rec?.accountId || state.lastUsedAccountId || state.accounts[0]?.id || '';
   }
-  document.getElementById('modal-rec-title').textContent = rec ? 'Editar Recorrência' : 'Nova Recorrência';
+  document.getElementById('modal-rec-title').textContent = rec ? 'Editar recorrência' : 'Nova recorrência';
   document.getElementById('rec-id').value = rec ? rec.id : '';
   document.getElementById('rec-desc').value = rec ? rec.description : '';
   document.getElementById('rec-amount').value = rec ? fromCents(rec.amountCents).toFixed(2) : '';
   document.getElementById('rec-day').value = rec ? String(rec.day) : '10';
   document.getElementById('rec-type').value = rec ? (rec.type || 'expense') : 'expense';
+  syncSegmentedControl('rec-type');
   if (rec && catSelect && rec.categoryId) {
     catSelect.value = rec.categoryId;
   }
+  const delBtn = document.getElementById('btn-delete-recurrence');
+  if (delBtn) delBtn.style.display = rec ? 'inline-flex' : 'none';
+  updateRecurrenceLiveSummary();
   document.getElementById('modal-recurrence').classList.add('open');
   setTimeout(() => document.getElementById('rec-desc').focus(), 40);
 }

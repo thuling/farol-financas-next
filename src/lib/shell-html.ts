@@ -144,91 +144,150 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
     </main>
   </div>
 
-  <!-- ==================== MODAL: LANÇAMENTO RÁPIDO (ATÉ 3 TOQUES) ==================== -->
+  <!-- ==================== MODAL: LANÇAMENTO RÁPIDO / EDITAR TRANSAÇÃO ==================== -->
   <div class="modal-backdrop" id="modal-transaction">
     <div class="modal-card">
       <div class="modal-header">
-        <h3 class="modal-title" id="modal-tx-title">Lançamento Rápido</h3>
+        <div class="modal-header-main">
+          <div class="modal-icon-badge">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+            </svg>
+          </div>
+          <div class="modal-header-text">
+            <h3 class="modal-title" id="modal-tx-title">Lançamento rápido</h3>
+            <p class="modal-subtitle">Registre entradas, saídas à vista ou parceladas no cartão</p>
+          </div>
+        </div>
         <button type="button" class="modal-close-btn" data-close-modal="modal-transaction" aria-label="Fechar">✕</button>
       </div>
       <form id="form-transaction">
-        <input type="hidden" id="tx-id" />
-        <input type="hidden" id="tx-category" />
+        <div class="modal-body">
+          <input type="hidden" id="tx-id" />
+          <input type="hidden" id="tx-category" />
 
-        <div class="quick-amount-hero">
-          <span class="quick-amount-prefix">R$</span>
-          <input type="number" step="0.01" min="0.01" id="tx-amount" class="quick-amount-input" placeholder="0,00" required />
-          <select id="tx-type" class="form-select" style="width:auto; min-width:110px;">
-            <option value="expense">Saída</option>
-            <option value="income">Entrada</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">Categoria (mais usadas primeiro)</label>
-          <div id="quick-cat-chips" class="quick-cat-chips"></div>
-        </div>
-
-        <details class="quick-more-details" id="quick-more-details">
-          <summary>+ Mais opções (descrição, tag, conta, parcelas, recorrência)</summary>
           <div class="form-row-2">
             <div class="form-group">
-              <label class="form-label">Descrição (opcional)</label>
-              <input type="text" id="tx-desc" class="form-input" placeholder="Ex: iFood / Mercado" />
+              <label class="form-label">Valor</label>
+              <div class="field-box">
+                <span class="field-prefix">R$</span>
+                <input type="number" step="0.01" min="0.01" id="tx-amount" class="form-input" placeholder="0,00" required />
+              </div>
             </div>
             <div class="form-group">
-              <label class="form-label">Tag (opcional)</label>
-              <input type="text" id="tx-tag" class="form-input" placeholder="Ex: trabalho, viagem" />
-            </div>
-          </div>
-          <div class="form-row-2">
-            <div class="form-group">
-              <label class="form-label">Conta / Cartão</label>
-              <select id="tx-account" class="form-select" required></select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Data</label>
-              <input type="date" id="tx-date" class="form-input" required />
-            </div>
-          </div>
-          <div class="form-row-2">
-            <div class="form-group">
-              <label class="form-label">Método</label>
-              <select id="tx-method" class="form-select">
-                <option value="Conta Corrente / Pix">Pix / Débito</option>
-                <option value="Cartão de Crédito">Cartão de Crédito</option>
+              <label class="form-label">Tipo</label>
+              <select id="tx-type" class="form-select" style="display:none;">
+                <option value="expense">Saída</option>
+                <option value="income">Entrada</option>
               </select>
-            </div>
-            <div class="form-group" id="tx-installments-wrap" style="display:none;">
-              <label class="form-label">Parcelas</label>
-              <div style="display:flex; align-items:center; gap:8px;">
-                <select id="tx-installments" class="form-select" style="flex:1;">
-                  <option value="1">1x (À vista)</option>
-                  <option value="2">2x</option>
-                  <option value="3">3x</option>
-                  <option value="4">4x</option>
-                  <option value="5">5x</option>
-                  <option value="6">6x</option>
-                  <option value="7">7x</option>
-                  <option value="8">8x</option>
-                  <option value="9">9x</option>
-                  <option value="10">10x</option>
-                  <option value="11">11x</option>
-                  <option value="12">12x</option>
-                </select>
-                <span id="tx-installment-preview" style="font-size:11.5px; color:var(--cyan-accent); white-space:nowrap;"></span>
+              <div class="pro-seg-group" data-seg-for="tx-type">
+                <button type="button" class="pro-seg-btn active" data-seg-val="expense">
+                  <span class="seg-dot red"></span>Saída
+                </button>
+                <button type="button" class="pro-seg-btn" data-seg-val="income">
+                  <span class="seg-dot green"></span>Entrada
+                </button>
               </div>
             </div>
           </div>
-          <label style="display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--text-secondary); cursor:pointer; margin-top:4px;">
-            <input type="checkbox" id="tx-is-recurring" />
-            Repetir mensalmente (salvar em Recorrências)
-          </label>
-        </details>
 
-        <div class="modal-actions">
-          <button type="button" class="btn-secondary" data-close-modal="modal-transaction">Cancelar</button>
-          <button type="submit" class="btn-primary">Confirmar</button>
+          <div class="form-group">
+            <label class="form-label">Categoria (mais usadas primeiro)</label>
+            <div id="quick-cat-chips" class="quick-cat-chips"></div>
+          </div>
+
+          <details class="quick-more-details" id="quick-more-details" open>
+            <summary>Detalhes do lançamento (descrição, conta, data e método)</summary>
+            <div class="form-row-2">
+              <div class="form-group">
+                <label class="form-label">Descrição</label>
+                <div class="field-box">
+                  <span class="field-prefix">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="16" y2="12"/><line x1="4" y1="17" x2="12" y2="17"/></svg>
+                  </span>
+                  <input type="text" id="tx-desc" class="form-input" placeholder="Ex: iFood / Mercado" />
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Tag (opcional)</label>
+                <div class="field-box">
+                  <span class="field-prefix">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                  </span>
+                  <input type="text" id="tx-tag" class="form-input" placeholder="Ex: trabalho, viagem" />
+                </div>
+              </div>
+            </div>
+            <div class="form-row-2">
+              <div class="form-group">
+                <label class="form-label">Conta / Cartão</label>
+                <div class="field-box">
+                  <span class="field-prefix">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+                  </span>
+                  <select id="tx-account" class="form-select" required></select>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Data</label>
+                <div class="field-box">
+                  <span class="field-prefix">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+                  </span>
+                  <input type="date" id="tx-date" class="form-input" required />
+                </div>
+              </div>
+            </div>
+            <div class="form-row-2">
+              <div class="form-group">
+                <label class="form-label">Método</label>
+                <div class="field-box">
+                  <span class="field-prefix">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 16.1A5 5 0 0 1 5.9 20M2 12.05A9 9 0 0 1 9.95 20M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"/></svg>
+                  </span>
+                  <select id="tx-method" class="form-select">
+                    <option value="Conta Corrente / Pix">Pix / Débito</option>
+                    <option value="Cartão de Crédito">Cartão de Crédito</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-group" id="tx-installments-wrap" style="display:none;">
+                <label class="form-label">Parcelas</label>
+                <div class="field-box">
+                  <select id="tx-installments" class="form-select">
+                    <option value="1">1x (À vista)</option>
+                    <option value="2">2x</option>
+                    <option value="3">3x</option>
+                    <option value="4">4x</option>
+                    <option value="5">5x</option>
+                    <option value="6">6x</option>
+                    <option value="7">7x</option>
+                    <option value="8">8x</option>
+                    <option value="9">9x</option>
+                    <option value="10">10x</option>
+                    <option value="11">11x</option>
+                    <option value="12">12x</option>
+                  </select>
+                  <span id="tx-installment-preview" class="field-suffix" style="color:var(--cyan-accent);"></span>
+                </div>
+              </div>
+            </div>
+            <label class="pro-checkbox-row">
+              <input type="checkbox" id="tx-is-recurring" />
+              <span>Repetir mensalmente (salvar em Recorrências)</span>
+            </label>
+          </details>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-modal-delete" id="btn-delete-transaction" style="display:none;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+            Excluir
+          </button>
+          <div class="modal-footer-right">
+            <button type="button" class="btn-secondary" data-close-modal="modal-transaction">Cancelar</button>
+            <button type="submit" class="btn-primary">Salvar alterações</button>
+          </div>
         </div>
       </form>
     </div>
@@ -238,58 +297,105 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
   <div class="modal-backdrop" id="modal-profile">
     <div class="modal-card">
       <div class="modal-header">
-        <h3 class="modal-title">Configurações & Orçamento</h3>
+        <div class="modal-header-main">
+          <div class="modal-icon-badge">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+            </svg>
+          </div>
+          <div class="modal-header-text">
+            <h3 class="modal-title">Configurações & orçamento</h3>
+            <p class="modal-subtitle">Perfis isolados, salário mensal fixo e metas financeiras</p>
+          </div>
+        </div>
         <button type="button" class="modal-close-btn" data-close-modal="modal-profile" aria-label="Fechar">✕</button>
       </div>
       <form id="form-profile">
-        <div class="form-row-2">
-          <div class="form-group">
-            <label class="form-label">Usuário Ativo (dados isolados)</label>
-            <select id="prof-user-select" class="form-select"></select>
+        <div class="modal-body">
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">Usuário ativo (dados isolados)</label>
+              <div class="field-box">
+                <span class="field-prefix">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                </span>
+                <select id="prof-user-select" class="form-select"></select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Novo usuário</label>
+              <div style="display:flex; gap:8px;">
+                <div class="field-box" style="flex:1;">
+                  <input type="text" id="prof-new-user" class="form-input" placeholder="Ex: Maria" />
+                </div>
+                <button type="button" class="btn-secondary" id="btn-create-user" style="white-space:nowrap; height:44px;">+ Criar</button>
+              </div>
+            </div>
           </div>
-          <div class="form-group">
-            <label class="form-label">Novo Usuário</label>
-            <div style="display:flex; gap:6px;">
-              <input type="text" id="prof-new-user" class="form-input" placeholder="Ex: Maria" />
-              <button type="button" class="btn-secondary" id="btn-create-user" style="white-space:nowrap;">+ Criar</button>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">Seu nome</label>
+              <div class="field-box">
+                <span class="field-prefix">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="16" y2="12"/><line x1="4" y1="17" x2="12" y2="17"/></svg>
+                </span>
+                <input type="text" id="prof-name" class="form-input" required />
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Plano / subtítulo</label>
+              <div class="field-box">
+                <span class="field-prefix">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                </span>
+                <input type="text" id="prof-plan" class="form-input" required />
+              </div>
+            </div>
+          </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">Salário mensal fixo</label>
+              <div class="field-box">
+                <span class="field-prefix">R$</span>
+                <input type="number" step="0.01" min="0" id="prof-salary" class="form-input" placeholder="0,00" />
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Dia do recebimento</label>
+              <div class="field-box">
+                <span class="field-prefix">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+                </span>
+                <input type="number" min="1" max="31" id="prof-salary-day" class="form-input" value="5" />
+                <span class="field-suffix">de 1<br/>a 31</span>
+              </div>
+            </div>
+          </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">Orçamento mensal</label>
+              <div class="field-box">
+                <span class="field-prefix">R$</span>
+                <input type="number" step="0.01" min="0" id="prof-budget" class="form-input" required />
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Meta reserva de emergência</label>
+              <div class="field-box">
+                <span class="field-prefix">R$</span>
+                <input type="number" step="0.01" min="1" id="prof-reserve-goal" class="form-input" required />
+              </div>
             </div>
           </div>
         </div>
-        <div class="form-row-2">
-          <div class="form-group">
-            <label class="form-label">Seu Nome</label>
-            <input type="text" id="prof-name" class="form-input" required />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Plano / Subtítulo</label>
-            <input type="text" id="prof-plan" class="form-input" required />
-          </div>
-        </div>
-        <div class="form-row-2">
-          <div class="form-group">
-            <label class="form-label">Salário Mensal Fixo (R$)</label>
-            <input type="number" step="0.01" min="0" id="prof-salary" class="form-input" placeholder="0,00" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Dia do Recebimento</label>
-            <input type="number" min="1" max="31" id="prof-salary-day" class="form-input" value="5" />
-          </div>
-        </div>
-        <div class="form-row-2">
-          <div class="form-group">
-            <label class="form-label">Orçamento Mensal (R$)</label>
-            <input type="number" step="0.01" min="0" id="prof-budget" class="form-input" required />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Meta Reserva Emergência (R$)</label>
-            <input type="number" step="0.01" min="1" id="prof-reserve-goal" class="form-input" required />
-          </div>
-        </div>
-        <div class="modal-actions-split">
-          <button type="button" class="btn-danger-ghost" id="btn-reset-demo">Restaurar Modelo (R$ 55,00)</button>
-          <div style="display:flex; gap:8px;">
-            <button type="button" class="btn-secondary" data-close-modal="modal-profile">Fechar</button>
-            <button type="submit" class="btn-primary">Salvar</button>
+        <div class="modal-footer">
+          <button type="button" class="btn-modal-delete" id="btn-reset-demo">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+            Restaurar modelo
+          </button>
+          <div class="modal-footer-right">
+            <button type="button" class="btn-secondary" data-close-modal="modal-profile">Cancelar</button>
+            <button type="submit" class="btn-primary">Salvar alterações</button>
           </div>
         </div>
       </form>
@@ -300,50 +406,110 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
   <div class="modal-backdrop" id="modal-invoice">
     <div class="modal-card">
       <div class="modal-header">
-        <h3 class="modal-title" id="modal-inv-title">Editar Fatura</h3>
+        <div class="modal-header-main">
+          <div class="modal-icon-badge">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/>
+            </svg>
+          </div>
+          <div class="modal-header-text">
+            <h3 class="modal-title" id="modal-inv-title">Editar fatura</h3>
+            <p class="modal-subtitle">Gerencie limite, datas de fechamento/vencimento e status do ciclo</p>
+          </div>
+        </div>
         <button type="button" class="modal-close-btn" data-close-modal="modal-invoice" aria-label="Fechar">✕</button>
       </div>
       <form id="form-invoice">
-        <input type="hidden" id="inv-account-id" />
-        <div class="form-row-2">
+        <div class="modal-body">
+          <input type="hidden" id="inv-account-id" />
           <div class="form-group">
-            <label class="form-label">Nome do Cartão / Conta</label>
-            <input type="text" id="inv-name" class="form-input" placeholder="Ex: Cartão Black" required />
+            <label class="form-label">Nome do cartão / conta</label>
+            <div class="field-box">
+              <span class="field-prefix">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+              </span>
+              <input type="text" id="inv-name" class="form-input" placeholder="Ex: Nubank, Mercado Pago" required />
+            </div>
           </div>
+
           <div class="form-group">
-            <label class="form-label">Status da Fatura</label>
-            <select id="inv-status" class="form-select">
+            <label class="form-label">Status da fatura</label>
+            <select id="inv-status" class="form-select" style="display:none;">
               <option value="open">Aberta</option>
               <option value="closed">Fechada</option>
               <option value="paid">Paga</option>
             </select>
+            <div class="pro-seg-group cols-3" data-seg-for="inv-status">
+              <button type="button" class="pro-seg-btn active" data-seg-val="open">
+                <span class="seg-dot cyan"></span>Aberta
+              </button>
+              <button type="button" class="pro-seg-btn" data-seg-val="closed">
+                <span class="seg-dot amber"></span>Fechada
+              </button>
+              <button type="button" class="pro-seg-btn" data-seg-val="paid">
+                <span class="seg-dot green"></span>Paga
+              </button>
+            </div>
+          </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">Limite total</label>
+              <div class="field-box">
+                <span class="field-prefix">R$</span>
+                <input type="number" step="0.01" min="1" id="inv-limit" class="form-input" required />
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Ajuste / valor avulso</label>
+              <div class="field-box">
+                <span class="field-prefix">R$</span>
+                <input type="number" step="0.01" id="inv-manual-adj" class="form-input" placeholder="0,00" />
+              </div>
+            </div>
+          </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">Dia de fechamento</label>
+              <div class="field-box">
+                <span class="field-prefix">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+                </span>
+                <input type="number" min="1" max="31" id="inv-closing-day" class="form-input" required />
+                <span class="field-suffix">de 1<br/>a 31</span>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Dia de vencimento</label>
+              <div class="field-box">
+                <span class="field-prefix">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+                </span>
+                <input type="number" min="1" max="31" id="inv-due-day" class="form-input" required />
+                <span class="field-suffix">de 1<br/>a 31</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-live-summary">
+            <div class="modal-live-cell">
+              <div class="modal-live-label">CICLO DE COBRANÇA</div>
+              <div class="modal-live-val" id="inv-live-cycle">Fecha dia 27 · Vence dia 12</div>
+            </div>
+            <div class="modal-live-cell">
+              <div class="modal-live-label">LIMITE CONFIGURADO</div>
+              <div class="modal-live-val" id="inv-live-limit">R$ 0,00</div>
+            </div>
           </div>
         </div>
-        <div class="form-row-2">
-          <div class="form-group">
-            <label class="form-label">Limite Total (R$)</label>
-            <input type="number" step="0.01" min="1" id="inv-limit" class="form-input" required />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Ajuste / Valor Avulso (R$)</label>
-            <input type="number" step="0.01" id="inv-manual-adj" class="form-input" placeholder="0,00" />
-          </div>
-        </div>
-        <div class="form-row-2">
-          <div class="form-group">
-            <label class="form-label">Dia de Fechamento</label>
-            <input type="number" min="1" max="31" id="inv-closing-day" class="form-input" required />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Dia de Vencimento</label>
-            <input type="number" min="1" max="31" id="inv-due-day" class="form-input" required />
-          </div>
-        </div>
-        <div class="modal-actions-split">
-          <button type="button" class="btn-danger-ghost" id="btn-delete-invoice">Excluir Cartão</button>
-          <div style="display:flex; gap:8px;">
+        <div class="modal-footer">
+          <button type="button" class="btn-modal-delete" id="btn-delete-invoice">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+            Excluir
+          </button>
+          <div class="modal-footer-right">
             <button type="button" class="btn-secondary" data-close-modal="modal-invoice">Cancelar</button>
-            <button type="submit" class="btn-primary">Salvar Fatura</button>
+            <button type="submit" class="btn-primary">Salvar alterações</button>
           </div>
         </div>
       </form>
@@ -354,68 +520,126 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
   <div class="modal-backdrop" id="modal-asset">
     <div class="modal-card">
       <div class="modal-header">
-        <h3 class="modal-title" id="modal-asset-title">Editar Ativo</h3>
+        <div class="modal-header-main">
+          <div class="modal-icon-badge">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>
+            </svg>
+          </div>
+          <div class="modal-header-text">
+            <h3 class="modal-title" id="modal-asset-title">Editar ativo</h3>
+            <p class="modal-subtitle">Configure saldo, rentabilidade % do CDI e faixas com limite promocional</p>
+          </div>
+        </div>
         <button type="button" class="modal-close-btn" data-close-modal="modal-asset" aria-label="Fechar">✕</button>
       </div>
       <form id="form-asset">
-        <input type="hidden" id="ast-id" />
-        <div class="form-row-2">
-          <div class="form-group">
-            <label class="form-label">Nome do Ativo</label>
-            <input type="text" id="ast-name" class="form-input" placeholder="Ex: CDB Liquidez Diária" required />
+        <div class="modal-body">
+          <input type="hidden" id="ast-id" />
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">Nome do ativo</label>
+              <div class="field-box">
+                <span class="field-prefix">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="16" y2="12"/><line x1="4" y1="17" x2="12" y2="17"/></svg>
+                </span>
+                <input type="text" id="ast-name" class="form-input" placeholder="Ex: CDB Liquidez Diária" required />
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Classe</label>
+              <div class="field-box">
+                <span class="field-prefix">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                </span>
+                <select id="ast-category" class="form-select">
+                  <option value="Renda Fixa (CDB)">Renda Fixa (CDB)</option>
+                  <option value="Tesouro Direto">Tesouro Direto</option>
+                  <option value="FIIs">FIIs</option>
+                  <option value="Ações">Ações</option>
+                  <option value="Cripto">Cripto</option>
+                  <option value="Reserva / Outros">Reserva / Outros</option>
+                </select>
+              </div>
+            </div>
           </div>
-          <div class="form-group">
-            <label class="form-label">Classe</label>
-            <select id="ast-category" class="form-select">
-              <option value="Renda Fixa (CDB)">Renda Fixa (CDB)</option>
-              <option value="Tesouro Direto">Tesouro Direto</option>
-              <option value="FIIs">FIIs</option>
-              <option value="Ações">Ações</option>
-              <option value="Cripto">Cripto</option>
-              <option value="Reserva / Outros">Reserva / Outros</option>
-            </select>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">Saldo atual</label>
+              <div class="field-box">
+                <span class="field-prefix">R$</span>
+                <input type="number" step="0.01" min="0" id="ast-amount" class="form-input" required />
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Rentabilidade principal</label>
+              <div class="field-box">
+                <input type="number" step="0.5" min="0" max="500" id="ast-cdb-pct" class="form-input" placeholder="100" required />
+                <span class="field-suffix">% CDI</span>
+              </div>
+            </div>
+          </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">Instituição</label>
+              <div class="field-box">
+                <span class="field-prefix">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>
+                </span>
+                <input type="text" id="ast-institution" class="form-input" placeholder="Ex: Mercado Pago, Nubank" />
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Liquidez</label>
+              <div class="field-box">
+                <span class="field-prefix">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                </span>
+                <select id="ast-liquidity" class="form-select">
+                  <option value="Diária">Liquidez Diária</option>
+                  <option value="D+1">D+1</option>
+                  <option value="D+30">D+30</option>
+                  <option value="No Vencimento">No Vencimento</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">Teto da taxa principal (opcional)</label>
+              <div class="field-box">
+                <span class="field-prefix">R$</span>
+                <input type="number" step="0.01" min="0" id="ast-promo-cap" class="form-input" placeholder="0,00 (sem teto)" />
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Taxa acima do teto</label>
+              <div class="field-box">
+                <input type="number" step="0.5" min="0" max="500" id="ast-excess-pct" class="form-input" placeholder="100" />
+                <span class="field-suffix">% CDI</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-live-summary">
+            <div class="modal-live-cell">
+              <div class="modal-live-label">RENDIMENTO MENSAL EST.</div>
+              <div class="modal-live-val" id="ast-live-monthly">+R$ 0,00</div>
+            </div>
+            <div class="modal-live-cell">
+              <div class="modal-live-label">PROJEÇÃO ANUAL BRUTA</div>
+              <div class="modal-live-val" id="ast-live-annual">+R$ 0,00</div>
+            </div>
           </div>
         </div>
-        <div class="form-row-2">
-          <div class="form-group">
-            <label class="form-label">Saldo Atual (R$)</label>
-            <input type="number" step="0.01" min="0" id="ast-amount" class="form-input" required />
-          </div>
-          <div class="form-group">
-            <label class="form-label">% do CDI / CDB</label>
-            <input type="number" step="0.5" min="0" max="500" id="ast-cdb-pct" class="form-input" placeholder="100" required />
-          </div>
-        </div>
-        <div class="form-row-2">
-          <div class="form-group">
-            <label class="form-label">Instituição</label>
-            <input type="text" id="ast-institution" class="form-input" placeholder="Ex: Nubank, Inter, XP" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Liquidez</label>
-            <select id="ast-liquidity" class="form-select">
-              <option value="Diária">Liquidez Diária</option>
-              <option value="D+1">D+1</option>
-              <option value="D+30">D+30</option>
-              <option value="No Vencimento">No Vencimento</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-row-2">
-          <div class="form-group">
-            <label class="form-label">Teto da taxa principal (R$, opcional)</label>
-            <input type="number" step="0.01" min="0" id="ast-promo-cap" class="form-input" placeholder="Ex: 10000.00 (0 = sem teto)" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">% do CDI acima do teto</label>
-            <input type="number" step="0.5" min="0" max="500" id="ast-excess-pct" class="form-input" placeholder="Ex: 100" />
-          </div>
-        </div>
-        <div class="modal-actions-split">
-          <button type="button" class="btn-danger-ghost" id="btn-delete-asset">Excluir Ativo</button>
-          <div style="display:flex; gap:8px;">
+        <div class="modal-footer">
+          <button type="button" class="btn-modal-delete" id="btn-delete-asset">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+            Excluir
+          </button>
+          <div class="modal-footer-right">
             <button type="button" class="btn-secondary" data-close-modal="modal-asset">Cancelar</button>
-            <button type="submit" class="btn-primary">Salvar Ativo</button>
+            <button type="submit" class="btn-primary">Salvar alterações</button>
           </div>
         </div>
       </form>
@@ -426,83 +650,174 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
   <div class="modal-backdrop" id="modal-category">
     <div class="modal-card">
       <div class="modal-header">
-        <h3 class="modal-title" id="modal-cat-title">Nova Categoria</h3>
+        <div class="modal-header-main">
+          <div class="modal-icon-badge">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>
+            </svg>
+          </div>
+          <div class="modal-header-text">
+            <h3 class="modal-title" id="modal-cat-title">Nova categoria</h3>
+            <p class="modal-subtitle">Defina o teto de gastos mensal e palavras-chave de identificação automática</p>
+          </div>
+        </div>
         <button type="button" class="modal-close-btn" data-close-modal="modal-category" aria-label="Fechar">✕</button>
       </div>
       <form id="form-category">
-        <input type="hidden" id="cat-id" />
-        <div class="form-row-2">
-          <div class="form-group">
-            <label class="form-label">Nome da Categoria</label>
-            <input type="text" id="cat-name" class="form-input" placeholder="Ex: Delivery" required />
+        <div class="modal-body">
+          <input type="hidden" id="cat-id" />
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">Nome da categoria</label>
+              <div class="field-box">
+                <span class="field-prefix">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="16" y2="12"/><line x1="4" y1="17" x2="12" y2="17"/></svg>
+                </span>
+                <input type="text" id="cat-name" class="form-input" placeholder="Ex: Delivery" required />
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Cor de identificação</label>
+              <div class="field-box">
+                <input type="color" id="cat-color" class="form-input" style="height:28px; padding:0; cursor:pointer;" value="#38b6ff" />
+              </div>
+            </div>
           </div>
           <div class="form-group">
-            <label class="form-label">Cor</label>
-            <input type="color" id="cat-color" class="form-input" style="height:41px; padding:4px;" value="#38b6ff" />
+            <label class="form-label">Orçamento mensal</label>
+            <div class="field-box">
+              <span class="field-prefix">R$</span>
+              <input type="number" step="0.01" min="0" id="cat-budget" class="form-input" placeholder="150,00" required />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Regras automáticas (palavras-chave separadas por vírgula)</label>
+            <div class="field-box">
+              <span class="field-prefix">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              </span>
+              <input type="text" id="cat-rules" class="form-input" placeholder="Ex: ifood, rappi, lanche, pizza" />
+            </div>
           </div>
         </div>
-        <div class="form-group">
-          <label class="form-label">Orçamento Mensal (R$)</label>
-          <input type="number" step="0.01" min="0" id="cat-budget" class="form-input" placeholder="150,00" required />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Regras Automáticas (palavras-chave separadas por vírgula)</label>
-          <input type="text" id="cat-rules" class="form-input" placeholder="Ex: ifood, rappi, lanche, pizza" />
-        </div>
-        <div class="modal-actions-split">
-          <button type="button" class="btn-danger-ghost" id="btn-archive-category">Arquivar Categoria</button>
-          <div style="display:flex; gap:8px;">
+        <div class="modal-footer">
+          <button type="button" class="btn-modal-delete" id="btn-archive-category">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+            Arquivar
+          </button>
+          <div class="modal-footer-right">
             <button type="button" class="btn-secondary" data-close-modal="modal-category">Cancelar</button>
-            <button type="submit" class="btn-primary">Salvar Categoria</button>
+            <button type="submit" class="btn-primary">Salvar alterações</button>
           </div>
         </div>
       </form>
     </div>
   </div>
 
-  <!-- ==================== MODAL: NOVA RECORRÊNCIA ==================== -->
+  <!-- ==================== MODAL: NOVA / EDITAR RECORRÊNCIA ==================== -->
   <div class="modal-backdrop" id="modal-recurrence">
     <div class="modal-card">
       <div class="modal-header">
-        <h3 class="modal-title" id="modal-rec-title">Nova Recorrência</h3>
+        <div class="modal-header-main">
+          <div class="modal-icon-badge">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+            </svg>
+          </div>
+          <div class="modal-header-text">
+            <h3 class="modal-title" id="modal-rec-title">Editar recorrência</h3>
+            <p class="modal-subtitle">Assinaturas e contas fixas lançadas todo mês</p>
+          </div>
+        </div>
         <button type="button" class="modal-close-btn" data-close-modal="modal-recurrence" aria-label="Fechar">✕</button>
       </div>
       <form id="form-recurrence">
-        <input type="hidden" id="rec-id" />
-        <div class="form-group">
-          <label class="form-label">Nome da assinatura ou conta fixa</label>
-          <input type="text" id="rec-desc" class="form-input" placeholder="Ex: Academia, Aluguel, Internet" required />
-        </div>
-        <div class="form-row-2">
+        <div class="modal-body">
+          <input type="hidden" id="rec-id" />
           <div class="form-group">
-            <label class="form-label">Valor mensal (R$)</label>
-            <input type="number" step="0.01" min="0.01" id="rec-amount" class="form-input" placeholder="89,90" required />
+            <label class="form-label">Nome</label>
+            <div class="field-box">
+              <span class="field-prefix">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="16" y2="12"/><line x1="4" y1="17" x2="12" y2="17"/></svg>
+              </span>
+              <input type="text" id="rec-desc" class="form-input" placeholder="Ex: Academia, Aluguel, Internet" required />
+            </div>
+          </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">Valor mensal</label>
+              <div class="field-box">
+                <span class="field-prefix">R$</span>
+                <input type="number" step="0.01" min="0.01" id="rec-amount" class="form-input" placeholder="45,00" required />
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Dia do vencimento</label>
+              <div class="field-box">
+                <span class="field-prefix">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+                </span>
+                <input type="number" min="1" max="31" id="rec-day" class="form-input" value="10" required />
+                <span class="field-suffix">de 1<br/>a 31</span>
+              </div>
+            </div>
+          </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">Tipo</label>
+              <select id="rec-type" class="form-select" style="display:none;">
+                <option value="expense">Saída</option>
+                <option value="income">Entrada</option>
+              </select>
+              <div class="pro-seg-group" data-seg-for="rec-type">
+                <button type="button" class="pro-seg-btn active" data-seg-val="expense">
+                  <span class="seg-dot red"></span>Saída
+                </button>
+                <button type="button" class="pro-seg-btn" data-seg-val="income">
+                  <span class="seg-dot green"></span>Entrada
+                </button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Categoria</label>
+              <div class="field-box">
+                <span class="field-prefix">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                </span>
+                <select id="rec-category" class="form-select"></select>
+              </div>
+            </div>
           </div>
           <div class="form-group">
-            <label class="form-label">Dia do vencimento (1 a 31)</label>
-            <input type="number" min="1" max="31" id="rec-day" class="form-input" value="10" required />
+            <label class="form-label">Conta / Cartão</label>
+            <div class="field-box">
+              <span class="field-prefix">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+              </span>
+              <select id="rec-account" class="form-select"></select>
+            </div>
+          </div>
+
+          <div class="modal-live-summary">
+            <div class="modal-live-cell">
+              <div class="modal-live-label">PRÓXIMA COBRANÇA</div>
+              <div class="modal-live-val" id="rec-live-next">10 de dez de 2026</div>
+            </div>
+            <div class="modal-live-cell">
+              <div class="modal-live-label">IMPACTO ANUAL</div>
+              <div class="modal-live-val" id="rec-live-annual">R$ 0,00</div>
+            </div>
           </div>
         </div>
-        <div class="form-row-2">
-          <div class="form-group">
-            <label class="form-label">Tipo</label>
-            <select id="rec-type" class="form-select">
-              <option value="expense">Saída (Despesa)</option>
-              <option value="income">Entrada (Receita)</option>
-            </select>
+        <div class="modal-footer">
+          <button type="button" class="btn-modal-delete" id="btn-delete-recurrence" style="display:none;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+            Excluir
+          </button>
+          <div class="modal-footer-right">
+            <button type="button" class="btn-secondary" data-close-modal="modal-recurrence">Cancelar</button>
+            <button type="submit" class="btn-primary">Salvar alterações</button>
           </div>
-          <div class="form-group">
-            <label class="form-label">Categoria</label>
-            <select id="rec-category" class="form-select"></select>
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Conta / Cartão</label>
-          <select id="rec-account" class="form-select"></select>
-        </div>
-        <div class="modal-actions">
-          <button type="button" class="btn-secondary" data-close-modal="modal-recurrence">Cancelar</button>
-          <button type="submit" class="btn-primary">Salvar Recorrência</button>
         </div>
       </form>
     </div>
@@ -512,50 +827,93 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
   <div class="modal-backdrop" id="modal-account">
     <div class="modal-card">
       <div class="modal-header">
-        <h3 class="modal-title" id="modal-acc-title">Nova Conta ou Cartão</h3>
+        <div class="modal-header-main">
+          <div class="modal-icon-badge">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/>
+            </svg>
+          </div>
+          <div class="modal-header-text">
+            <h3 class="modal-title" id="modal-acc-title">Nova conta ou cartão</h3>
+            <p class="modal-subtitle">Configure contas correntes, cartões de crédito ou bancos híbridos</p>
+          </div>
+        </div>
         <button type="button" class="modal-close-modal modal-close-btn" data-close-modal="modal-account" aria-label="Fechar">✕</button>
       </div>
       <form id="form-account">
-        <input type="hidden" id="acc-id" />
-        <div class="form-row-2">
-          <div class="form-group">
-            <label class="form-label">Nome do Banco ou Cartão</label>
-            <input type="text" id="acc-name" class="form-input" placeholder="Ex: Nubank, Itaú, Inter" required />
+        <div class="modal-body">
+          <input type="hidden" id="acc-id" />
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">Nome do banco ou cartão</label>
+              <div class="field-box">
+                <span class="field-prefix">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="16" y2="12"/><line x1="4" y1="17" x2="12" y2="17"/></svg>
+                </span>
+                <input type="text" id="acc-name" class="form-input" placeholder="Ex: Nubank, Mercado Pago" required />
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Modalidade</label>
+              <div class="field-box">
+                <span class="field-prefix">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+                </span>
+                <select id="acc-type" class="form-select">
+                  <option value="Conta + Cartão">Conta + Cartão</option>
+                  <option value="Conta Corrente">Conta Corrente</option>
+                  <option value="Cartão de Crédito">Cartão de Crédito</option>
+                </select>
+              </div>
+            </div>
           </div>
-          <div class="form-group">
-            <label class="form-label">Tipo</label>
-            <select id="acc-type" class="form-select">
-              <option value="Conta + Cartão">Conta + Cartão</option>
-              <option value="Conta Corrente">Conta Corrente</option>
-              <option value="Cartão de Crédito">Cartão de Crédito</option>
-            </select>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">Saldo inicial</label>
+              <div class="field-box">
+                <span class="field-prefix">R$</span>
+                <input type="number" step="0.01" id="acc-balance" class="form-input" value="0.00" />
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Limite disponível</label>
+              <div class="field-box">
+                <span class="field-prefix">R$</span>
+                <input type="number" step="0.01" min="0" id="acc-limit" class="form-input" value="3000.00" />
+              </div>
+            </div>
+          </div>
+          <div class="form-row-2" id="acc-card-dates-row">
+            <div class="form-group">
+              <label class="form-label">Dia de fechamento</label>
+              <div class="field-box">
+                <span class="field-prefix">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+                </span>
+                <input type="number" min="1" max="31" id="acc-closing-day" class="form-input" value="5" />
+                <span class="field-suffix">de 1<br/>a 31</span>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Dia de vencimento</label>
+              <div class="field-box">
+                <span class="field-prefix">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+                </span>
+                <input type="number" min="1" max="31" id="acc-due-day" class="form-input" value="12" />
+                <span class="field-suffix">de 1<br/>a 31</span>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="form-row-2">
-          <div class="form-group">
-            <label class="form-label">Saldo inicial (R$)</label>
-            <input type="number" step="0.01" id="acc-balance" class="form-input" value="0.00" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Limite disponível (R$)</label>
-            <input type="number" step="0.01" min="0" id="acc-limit" class="form-input" value="3000.00" />
-          </div>
-        </div>
-        <div class="form-row-2" id="acc-card-dates-row">
-          <div class="form-group">
-            <label class="form-label">Dia de fechamento</label>
-            <input type="number" min="1" max="31" id="acc-closing-day" class="form-input" value="5" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Dia de vencimento</label>
-            <input type="number" min="1" max="31" id="acc-due-day" class="form-input" value="12" />
-          </div>
-        </div>
-        <div class="modal-actions-split">
-          <button type="button" class="btn-danger-ghost" id="btn-delete-account">Excluir Conta</button>
-          <div style="display:flex; gap:8px;">
+        <div class="modal-footer">
+          <button type="button" class="btn-modal-delete" id="btn-delete-account">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+            Excluir
+          </button>
+          <div class="modal-footer-right">
             <button type="button" class="btn-secondary" data-close-modal="modal-account">Cancelar</button>
-            <button type="submit" class="btn-primary">Salvar Conta</button>
+            <button type="submit" class="btn-primary">Salvar alterações</button>
           </div>
         </div>
       </form>
@@ -564,20 +922,37 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
 
   <!-- ==================== MODAL: DIÁLOGO ESTILIZADO (CONFIRMAÇÃO / INPUT) ==================== -->
   <div class="modal-backdrop" id="modal-dialog">
-    <div class="modal-card" style="max-width:420px;">
+    <div class="modal-card" style="max-width:440px;">
       <div class="modal-header">
-        <h3 class="modal-title" id="dialog-title">Confirmar ação</h3>
+        <div class="modal-header-main">
+          <div class="modal-icon-badge">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+          </div>
+          <div class="modal-header-text">
+            <h3 class="modal-title" id="dialog-title">Confirmar ação</h3>
+            <p class="modal-subtitle">Verifique os dados antes de prosseguir</p>
+          </div>
+        </div>
         <button type="button" class="modal-close-btn" id="dialog-close-x" aria-label="Fechar">✕</button>
       </div>
       <form id="form-dialog">
-        <p id="dialog-message" style="font-size:13.5px; color:var(--text-secondary); line-height:1.5; margin-bottom:14px;"></p>
-        <div class="form-group" id="dialog-input-wrap" style="display:none;">
-          <label class="form-label" id="dialog-input-label">Valor</label>
-          <input type="text" id="dialog-input" class="form-input" />
+        <div class="modal-body">
+          <p id="dialog-message" style="font-size:13.5px; color:var(--text-secondary); line-height:1.5; margin-bottom:14px;"></p>
+          <div class="form-group" id="dialog-input-wrap" style="display:none; margin-bottom:0;">
+            <label class="form-label" id="dialog-input-label">Valor</label>
+            <div class="field-box">
+              <span class="field-prefix">R$</span>
+              <input type="text" id="dialog-input" class="form-input" />
+            </div>
+          </div>
         </div>
-        <div class="modal-actions">
-          <button type="button" class="btn-secondary" id="dialog-cancel-btn">Cancelar</button>
-          <button type="submit" class="btn-primary" id="dialog-confirm-btn">Confirmar</button>
+        <div class="modal-footer">
+          <div class="modal-footer-right">
+            <button type="button" class="btn-secondary" id="dialog-cancel-btn">Cancelar</button>
+            <button type="submit" class="btn-primary" id="dialog-confirm-btn">Confirmar</button>
+          </div>
         </div>
       </form>
     </div>
