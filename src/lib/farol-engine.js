@@ -95,12 +95,22 @@ function getDefaultState(userName = 'Meu nome') {
       daysRemaining: 18
     },
     categories: [
-      { id: 'cat-delivery', name: 'Delivery', color: '#f16364', budgetCents: 15000, rules: ['ifood', 'rappi', 'delivery', 'pizza', 'lanche'], archived: false },
-      { id: 'cat-mercado', name: 'Mercado', color: '#38b6ff', budgetCents: 60000, rules: ['mercado', 'supermercado', 'carrefour', 'assai', 'padaria'], archived: false },
-      { id: 'cat-moradia', name: 'Moradia', color: '#a78bfa', budgetCents: 120000, rules: ['aluguel', 'condominio', 'luz', 'energia', 'agua', 'internet'], archived: false },
-      { id: 'cat-transporte', name: 'Transporte', color: '#f59e0b', budgetCents: 30000, rules: ['uber', '99', 'gasolina', 'posto', 'metro', 'estacionamento'], archived: false },
-      { id: 'cat-lazer', name: 'Lazer', color: '#ec4899', budgetCents: 25000, rules: ['cinema', 'netflix', 'spotify', 'show', 'bar'], archived: false },
-      { id: 'cat-receita', name: 'Salário / Receitas', color: '#34d399', budgetCents: 0, rules: ['salario', 'pix recebido', 'freela', 'rendimento'], archived: false }
+      { id: 'cat-internet', name: 'Internet & Telefonia', color: '#06b6d4', budgetCents: 15000, rules: ['internet', 'fibra', 'wifi', 'vivo', 'claro', 'tim', 'oi', 'celular', 'recarga', 'banda larga'], archived: false },
+      { id: 'cat-moradia', name: 'Moradia & Contas', color: '#a78bfa', budgetCents: 120000, rules: ['aluguel', 'condominio', 'luz', 'energia', 'agua', 'gas', 'iptu', 'reforma', 'manutencao'], archived: false },
+      { id: 'cat-mercado', name: 'Mercado & Casa', color: '#38b6ff', budgetCents: 60000, rules: ['mercado', 'supermercado', 'carrefour', 'assai', 'atacadao', 'padaria', 'hortifruti', 'acougue', 'limpeza'], archived: false },
+      { id: 'cat-delivery', name: 'Delivery & Restaurantes', color: '#f16364', budgetCents: 20000, rules: ['ifood', 'rappi', 'delivery', 'pizza', 'lanche', 'restaurante', 'cafe', 'almoco', 'jantar', 'hamburguer'], archived: false },
+      { id: 'cat-transporte', name: 'Transporte & Combustível', color: '#f59e0b', budgetCents: 30000, rules: ['uber', '99', 'gasolina', 'etanol', 'posto', 'metro', 'onibus', 'estacionamento', 'pedagio', 'ipva', 'mecanico'], archived: false },
+      { id: 'cat-assinaturas', name: 'Assinaturas & Apps', color: '#6366f1', budgetCents: 12000, rules: ['netflix', 'spotify', 'youtube', 'prime', 'disney', 'icloud', 'google one', 'chatgpt', 'gemini', 'adobe', 'assinatura'], archived: false },
+      { id: 'cat-saude', name: 'Saúde & Farmácia', color: '#10b981', budgetCents: 25000, rules: ['farmacia', 'drogaria', 'medico', 'consulta', 'exame', 'dentista', 'plano de saude', 'remedio', 'terapia', 'academia'], archived: false },
+      { id: 'cat-educacao', name: 'Educação & Cursos', color: '#3b82f6', budgetCents: 20000, rules: ['curso', 'faculdade', 'escola', 'livro', 'udemy', 'alura', 'ingles', 'mensalidade', 'material escolar'], archived: false },
+      { id: 'cat-compras', name: 'Compras & Vestuário', color: '#fb923c', budgetCents: 25000, rules: ['amazon', 'mercado livre', 'shopee', 'shein', 'roupa', 'tenis', 'shopping', 'eletronico', 'loja'], archived: false },
+      { id: 'cat-lazer', name: 'Lazer & Entretenimento', color: '#ec4899', budgetCents: 25000, rules: ['cinema', 'show', 'bar', 'festa', 'ingresso', 'jogo', 'steam', 'playstation', 'xbox', 'passeio'], archived: false },
+      { id: 'cat-viagem', name: 'Viagens & Hospedagem', color: '#14b8a6', budgetCents: 30000, rules: ['hotel', 'airbnb', 'passagem', 'aerea', 'voo', 'rodoviaria', 'malas', 'turismo', 'viagem'], archived: false },
+      { id: 'cat-pets', name: 'Pets', color: '#eab308', budgetCents: 15000, rules: ['pet', 'racao', 'veterinario', 'petshop', 'banho e tosa', 'cobasi', 'petz'], archived: false },
+      { id: 'cat-presentes', name: 'Presentes & Doações', color: '#f43f5e', budgetCents: 10000, rules: ['presente', 'aniversario', 'floricultura', 'doacao', 'igreja', 'casamento', 'lembranca'], archived: false },
+      { id: 'cat-impostos', name: 'Impostos & Taxas', color: '#64748b', budgetCents: 15000, rules: ['imposto', 'darf', 'inss', 'mei', 'das', 'taxa', 'tarifa', 'anuidade', 'cartorio', 'multa'], archived: false },
+      { id: 'cat-invest', name: 'Investimentos & Reserva', color: '#22c55e', budgetCents: 50000, rules: ['cdb', 'tesouro', 'fii', 'acao', 'corretora', 'reserva', 'poupanca', 'aporte'], archived: false },
+      { id: 'cat-receita', name: 'Salário / Receitas', color: '#34d399', budgetCents: 0, rules: ['salario', 'pix recebido', 'freela', 'rendimento', 'reembolso', 'bonus', 'decimo terceiro', 'ferias'], archived: false }
     ],
     accounts: [
       { id: 'acc-nubank', name: 'Conta Principal', type: 'Conta Corrente', initialBalanceCents: 0, limitCents: 250000, closingDay: 5, dueDay: 12 },
@@ -210,17 +220,29 @@ let selectedTxIds = new Set();
 let undoSnapshot = null;
 let undoTimer = null;
 
+function mergeDefaultCategories(targetState) {
+  if (!targetState || !Array.isArray(targetState.categories)) return targetState;
+  const existingIds = new Set(targetState.categories.map(c => c.id));
+  const defaults = getDefaultState().categories;
+  defaults.forEach(defCat => {
+    if (!existingIds.has(defCat.id)) {
+      targetState.categories.push(defCat);
+    }
+  });
+  return targetState;
+}
+
 function loadState() {
   const key = getUserStorageKey(usersIndex.activeUserId);
   try {
     const raw = localStorage.getItem(key);
     if (raw) {
-      return { ...getDefaultState(), ...JSON.parse(raw) };
+      return mergeDefaultCategories({ ...getDefaultState(), ...JSON.parse(raw) });
     }
     if (usersIndex.activeUserId === 'user-default') {
       const legacyRaw = localStorage.getItem(LEGACY_V1_KEY);
       if (legacyRaw) {
-        const migrated = migrateLegacyV1(JSON.parse(legacyRaw));
+        const migrated = mergeDefaultCategories(migrateLegacyV1(JSON.parse(legacyRaw)));
         localStorage.setItem(key, JSON.stringify(migrated));
         return migrated;
       }
