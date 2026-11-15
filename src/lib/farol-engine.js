@@ -847,7 +847,7 @@ function renderVisaoGeralRow4(m) {
         return `
           <div class="goal-highlight-box">
             <span class="goal-priority-pill">Prioridade</span>
-            <div style="font-size:16px; font-weight:700; color:#fff;">${topGoal.title}</div>
+            <div class="goal-spotlight-title" style="font-size:16px; font-weight:700; color:#fff;">${topGoal.title}</div>
             <div style="font-size:11.5px; color:#c8e4f7;">Previsão de conclusão · ${topGoal.deadline || '2027-12'}</div>
           </div>
           <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:12px;">
@@ -976,9 +976,9 @@ function buildMonthlySpendSvg(expenseCents, txs = []) {
           <stop offset="100%" stop-color="#f16364" stop-opacity="0.02"/>
         </linearGradient>
       </defs>
-      <line x1="0" y1="16" x2="296" y2="16" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
-      <line x1="0" y1="36" x2="296" y2="36" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
-      <line x1="0" y1="56" x2="296" y2="56" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+      <line x1="0" y1="16" x2="296" y2="16" stroke="var(--chart-grid, rgba(255,255,255,0.05))" stroke-width="1"/>
+      <line x1="0" y1="36" x2="296" y2="36" stroke="var(--chart-grid, rgba(255,255,255,0.05))" stroke-width="1"/>
+      <line x1="0" y1="56" x2="296" y2="56" stroke="var(--chart-grid, rgba(255,255,255,0.05))" stroke-width="1"/>
       <path d="${pathArea}" fill="url(#coralArea)"/>
       <path d="${pathLine}" fill="none" stroke="#f16364" stroke-width="2.3" stroke-linecap="round"/>
       <circle cx="288" cy="${endY}" r="4.5" fill="#f59e0b" stroke="#ffffff" stroke-width="1.5"/>
@@ -1510,7 +1510,7 @@ function renderFluxoCaixaView() {
     const y = (padT + chartH * (1 - frac)).toFixed(1);
     const valCents = Math.round(maxBarCents * frac);
     return `
-      <line x1="${padL}" y1="${y}" x2="${svgW - padR}" y2="${y}" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+      <line x1="${padL}" y1="${y}" x2="${svgW - padR}" y2="${y}" stroke="var(--chart-grid, rgba(255,255,255,0.06))" stroke-width="1"/>
       <text x="4" y="${Number(y) + 4}" fill="#5e7482" font-size="10.5">${fmtBRL(valCents)}</text>
     `;
   }).join('');
@@ -2372,7 +2372,7 @@ function renderProjecaoView() {
       </div>
 
       <svg width="100%" height="225" viewBox="0 0 ${svgW} ${svgH}" preserveAspectRatio="none">
-        <line x1="${padL}" y1="${zeroY.toFixed(1)}" x2="${svgW - padR}" y2="${zeroY.toFixed(1)}" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+        <line x1="${padL}" y1="${zeroY.toFixed(1)}" x2="${svgW - padR}" y2="${zeroY.toFixed(1)}" stroke="var(--chart-grid, rgba(255,255,255,0.12))" stroke-width="1"/>
         <text x="6" y="${toY(maxVal) + 4}" fill="#5e7482" font-size="10.5">${fmtBRL(maxVal)}</text>
         <text x="6" y="${zeroY + 4}" fill="#5e7482" font-size="10.5">R$ 0</text>
         <polyline fill="none" stroke="#49b6eb" stroke-width="2.5" points="${linePoints}" />

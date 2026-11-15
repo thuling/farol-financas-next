@@ -35,6 +35,7 @@
 [data-theme="light"] {
   color-scheme: light;
   --ring-track: rgba(15, 35, 50, 0.12);
+  --chart-grid: rgba(15, 35, 50, 0.1);
   --bg-deep: #eef3f7;
   --bg-sidebar: rgba(255, 255, 255, 0.92);
   --bg-card: rgba(255, 255, 255, 0.85);
@@ -177,6 +178,100 @@
 
 [data-theme="light"] .cat-progress-track {
   background: rgba(15, 35, 50, 0.08);
+}
+
+[data-theme="light"] .user-name,
+[data-theme="light"] .fatura-tx-item,
+[data-theme="light"] .quick-amount-input {
+  color: #0f1e28;
+}
+
+[data-theme="light"] .nav-item:hover {
+  background: rgba(15, 35, 50, 0.06);
+  color: #0f1e28;
+}
+
+[data-theme="light"] .sidebar-footer {
+  background: rgba(15, 35, 50, 0.04);
+  border-color: rgba(15, 35, 50, 0.08);
+}
+
+[data-theme="light"] .btn-icon-edit,
+[data-theme="light"] .modal-close-btn {
+  background: rgba(15, 35, 50, 0.06);
+  border-color: rgba(15, 35, 50, 0.12);
+  color: #1e3342;
+}
+
+[data-theme="light"] .btn-icon-edit:hover,
+[data-theme="light"] .modal-close-btn:hover {
+  background: rgba(15, 35, 50, 0.12);
+  color: #0f1e28;
+}
+
+[data-theme="light"] .fatura-tx-preview,
+[data-theme="light"] .cdi-bar,
+[data-theme="light"] .tx-summary-strip {
+  background: rgba(15, 35, 50, 0.045);
+  border-color: rgba(15, 35, 50, 0.1);
+  color: #0f1e28;
+}
+
+[data-theme="light"] .cdi-input-mini {
+  background: #ffffff;
+  border-color: rgba(15, 35, 50, 0.18);
+  color: #0f1e28;
+}
+
+[data-theme="light"] .alloc-bar-track,
+[data-theme="light"] .goal-progress-track {
+  background: rgba(15, 35, 50, 0.09);
+}
+
+[data-theme="light"] .data-table th {
+  color: #4c6473;
+  border-bottom-color: rgba(15, 35, 50, 0.1);
+}
+
+[data-theme="light"] .data-table td {
+  border-bottom-color: rgba(15, 35, 50, 0.07);
+}
+
+[data-theme="light"] .data-table tr:hover td {
+  background: rgba(15, 35, 50, 0.03);
+}
+
+[data-theme="light"] .rule-badge,
+[data-theme="light"] .tag-pill,
+[data-theme="light"] .cdb-badge {
+  background: rgba(15, 35, 50, 0.07);
+  border-color: rgba(15, 35, 50, 0.12);
+  color: #1e3342;
+}
+
+[data-theme="light"] .goal-spotlight-card {
+  background: linear-gradient(135deg, rgba(56, 182, 255, 0.16), rgba(37, 99, 235, 0.12));
+  border-color: rgba(56, 182, 255, 0.35);
+}
+
+[data-theme="light"] .goal-spotlight-title {
+  color: #0f1e28 !important;
+}
+
+[data-theme="light"] #chart-tooltip {
+  background: rgba(255, 255, 255, 0.97);
+  border-color: rgba(15, 35, 50, 0.14);
+  box-shadow: 0 10px 26px rgba(15, 35, 50, 0.14);
+}
+
+[data-theme="light"] .tooltip-value {
+  color: #0f1e28;
+}
+
+[data-theme="light"] #undo-toast {
+  background: #ffffff;
+  color: #0f1e28;
+  border-color: rgba(15, 35, 50, 0.14);
 }
 
 * {
