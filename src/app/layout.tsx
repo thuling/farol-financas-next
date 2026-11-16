@@ -4,6 +4,16 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'Farol — Controle Financeiro Pessoal',
   description: 'Dashboard financeiro pessoal com fluxo de caixa, faturas, projeção e Open Finance.',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Farol',
+  },
+  icons: {
+    icon: '/icon.svg',
+    apple: '/icon.svg',
+  },
 };
 
 export default function RootLayout({

@@ -363,25 +363,68 @@ function getMonthTransactions(ym = state.selectedMonth) {
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
+function getCalendarMonthInfo(ym = state.selectedMonth) {
+  const [yStr, mStr] = (ym || '2026-11').split('-');
+  const year = parseInt(yStr, 10) || 2026;
+  const month = parseInt(mStr, 10) || 11;
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const todayISO = getTodayISO();
+  const todayYM = todayISO.slice(0, 7);
+  const todayDay = parseInt(todayISO.split('-')[2] || '12', 10);
+
+  let elapsedDays = 12;
+  let daysRem = 18;
+  if (ym === todayYM) {
+    elapsedDays = Math.min(daysInMonth, Math.max(1, todayDay));
+    daysRem = Math.max(1, daysInMonth - elapsedDays);
+  } else if (ym < todayYM) {
+    elapsedDays = daysInMonth;
+    daysRem = 0;
+  } else {
+    elapsedDays = Math.min(12, daysInMonth);
+    daysRem = Math.max(1, daysInMonth - 12);
+  }
+  return { year, month, daysInMonth, elapsedDays, daysRem };
+}
+
+function isInternalTransferTx(t) {
+  return Boolean(
+    t.isInvoicePayment ||
+    t.isAssetTransfer ||
+    t.method === 'Pagamento de Fatura' ||
+    t.method === 'Aporte / Investimento'
+  );
+}
+
 function computeMonthMetrics(ym = state.selectedMonth) {
   const txs = getMonthTransactions(ym);
-  const incomeCents = txs.filter(t => t.type === 'income').reduce((acc, t) => acc + (Number(t.amountCents) || 0), 0);
-  const expenseCents = txs.filter(t => t.type === 'expense').reduce((acc, t) => acc + (Number(t.amountCents) || 0), 0);
+  const operationalTxs = txs.filter(t => !isInternalTransferTx(t));
+  const incomeCents = operationalTxs.filter(t => t.type === 'income').reduce((acc, t) => acc + (Number(t.amountCents) || 0), 0);
+  const expenseCents = operationalTxs.filter(t => t.type === 'expense').reduce((acc, t) => acc + (Number(t.amountCents) || 0), 0);
   const partialResultCents = incomeCents - expenseCents;
+
+  const cal = getCalendarMonthInfo(ym);
+  const daysInMonth = cal.daysInMonth;
+  const elapsedDays = cal.elapsedDays;
+  const daysRem = cal.daysRem;
 
   const budgetCents = Number(state.profile.monthlyBudgetCents) || 0;
   const overBudgetCents = Math.max(0, expenseCents - budgetCents);
-  const daysRem = Number(state.profile.daysRemaining) || 18;
   const overPerDayCents = daysRem > 0 ? Math.round(overBudgetCents / daysRem) : overBudgetCents;
 
   const byCategoryMap = {};
-  txs.filter(t => t.type === 'expense').forEach(t => {
+  operationalTxs.filter(t => t.type === 'expense').forEach(t => {
     byCategoryMap[t.categoryId] = (byCategoryMap[t.categoryId] || 0) + (Number(t.amountCents) || 0);
   });
 
   const prevYM = addMonthsYM(ym, -1);
   const prevCatMap = {};
-  getMonthTransactions(prevYM).filter(t => t.type === 'expense').forEach(t => {
+  const prevTxs = getMonthTransactions(prevYM).filter(t => !isInternalTransferTx(t));
+  const prevIncomeCents = prevTxs.filter(t => t.type === 'income').reduce((s, t) => s + (Number(t.amountCents) || 0), 0);
+  const prevExpenseCents = prevTxs.filter(t => t.type === 'expense').reduce((s, t) => s + (Number(t.amountCents) || 0), 0);
+  const prevPartialResultCents = prevIncomeCents - prevExpenseCents;
+
+  prevTxs.filter(t => t.type === 'expense').forEach(t => {
     prevCatMap[t.categoryId] = (prevCatMap[t.categoryId] || 0) + (Number(t.amountCents) || 0);
   });
 
@@ -407,18 +450,37 @@ function computeMonthMetrics(ym = state.selectedMonth) {
   const totalInvestmentsCents = state.assets.reduce((acc, a) => acc + (Number(a.amountCents) || 0), 0);
   const weeklyInvDeltaCents = state.assets.reduce((acc, a) => acc + (Number(a.weeklyDeltaCents) || 0), 0);
 
+  // Reserva de Emergência considera apenas ativos de renda fixa com liquidez diária/D+1 (exclui Cripto/Ações/FIIs/No Vencimento)
+  const liquidReserveAssets = state.assets.filter(a => {
+    const liq = a.liquidity || 'Diária';
+    const isLiquid = liq === 'Diária' || liq === 'D+1';
+    const isVolatile = a.category === 'Cripto' || a.category === 'Ações' || a.category === 'FIIs';
+    return isLiquid && !isVolatile;
+  });
   const reserveGoalCents = Number(state.profile.emergencyGoalCents) || 33000;
-  const reserveCurrentCents = Math.max(0, totalInvestmentsCents);
+  const reserveCurrentCents = Math.max(0, liquidReserveAssets.reduce((s, a) => s + (Number(a.amountCents) || 0), 0));
   const reservePct = reserveGoalCents > 0 ? Math.min(100, Math.round((reserveCurrentCents / reserveGoalCents) * 100)) : 0;
-  const reserveMonths = reserveGoalCents > 0 ? (reserveCurrentCents / (reserveGoalCents / 6)) : 0;
+
+  const fixedActiveOutCents = state.recurrences
+    .filter(r => r.active && r.type !== 'income')
+    .reduce((s, r) => s + (Number(r.amountCents) || 0), 0);
+  const monthlyLivingCostCents = Math.max(
+    1,
+    expenseCents > 0 ? expenseCents : (fixedActiveOutCents > 0 ? fixedActiveOutCents : (budgetCents > 0 ? budgetCents : Math.round(reserveGoalCents / 6)))
+  );
+  const reserveMonths = reserveCurrentCents / monthlyLivingCostCents;
 
   return {
-    txs,
+    txs: operationalTxs,
+    allTxs: txs,
     incomeCents,
     expenseCents,
     partialResultCents,
+    prevPartialResultCents,
     budgetCents,
     overBudgetCents,
+    daysInMonth,
+    elapsedDays,
     daysRem,
     overPerDayCents,
     distribution,
@@ -531,9 +593,10 @@ function renderApp() {
     'contas': 'Contas'
   };
 
+  const calInfo = getCalendarMonthInfo(state.selectedMonth);
   document.getElementById('page-title').textContent = tabTitles[state.currentTab] || 'Visão geral';
   document.getElementById('page-subtitle').textContent =
-    `${fmtMonthLabel(state.selectedMonth)} · ${state.profile.daysRemaining} dias restantes`;
+    `${fmtMonthLabel(state.selectedMonth)} · ${calInfo.daysRem} dias restantes`;
 
   const container = document.getElementById('view-container');
 
@@ -589,7 +652,7 @@ function renderApp() {
 // ============================================================
 function renderVisaoGeral() {
   const m = computeMonthMetrics();
-  const lineChartSvg = buildMonthlySpendSvg(m.expenseCents, m.txs);
+  const lineChartSvg = buildMonthlySpendSvg(m.expenseCents, m.txs, m.daysInMonth);
   const donutSvg = buildDonutSvg(m.distribution, m.expenseCents);
 
   let categoryBarsHtml = '';
@@ -651,9 +714,9 @@ function renderVisaoGeral() {
     accumulatedMainVal = fmtBRL(m.partialResultCents);
     accumulatedTitle = 'Saldo acumulado no período';
   } else if (state.accumulatedSubTab === 'por-dia') {
-    const dailyAvgCents = Math.round(m.expenseCents / 12);
+    const dailyAvgCents = Math.round(m.expenseCents / Math.max(1, m.elapsedDays));
     accumulatedMainVal = `${fmtBRL(dailyAvgCents)} / dia`;
-    accumulatedTitle = 'Média diária até o dia 12';
+    accumulatedTitle = `Média diária até o dia ${m.elapsedDays}`;
   }
 
   const topCat = m.distribution[0];
@@ -678,8 +741,8 @@ function renderVisaoGeral() {
             ${lineChartSvg}
             <div class="chart-axis-labels">
               <span>dia 1</span>
-              <span>dia 7</span>
-              <span>dia 12</span>
+              <span>dia ${Math.round(m.daysInMonth / 2)}</span>
+              <span>dia ${m.daysInMonth}</span>
             </div>
           </div>
 
@@ -737,7 +800,7 @@ function renderVisaoGeral() {
         <div class="partial-value ${m.partialResultCents < 0 ? 'negative' : 'positive'} sensitive-val">
           ${fmtBRL(m.partialResultCents)}
         </div>
-        <div class="vs-prev">vs R$ 0,00 mês anterior</div>
+        <div class="vs-prev sensitive-val">vs ${fmtBRL(m.prevPartialResultCents)} mês anterior</div>
 
         <div class="in-out-grid">
           <div class="in-out-item">
@@ -819,7 +882,7 @@ function renderVisaoGeral() {
         </div>
 
         <div style="margin-top:14px;">
-          ${buildAccumulatedAreaSvg(m.expenseCents, state.accumulatedSubTab, m.partialResultCents)}
+          ${buildAccumulatedAreaSvg(m.expenseCents, state.accumulatedSubTab, m.partialResultCents, m.txs, m.daysInMonth)}
         </div>
       </div>
 
@@ -1021,20 +1084,22 @@ function buildSmoothSvgPath(pts) {
   return d;
 }
 
-function buildMonthlySpendSvg(expenseCents, txs = []) {
-  const days = Array.from({ length: 12 }, (_, i) => i + 1);
-  const dailyCum = days.map(day =>
-    txs
-      .filter(t => t.type === 'expense' && parseInt((t.date || '').split('-')[2] || '12', 10) <= day)
-      .reduce((s, t) => s + (Number(t.amountCents) || 0), 0)
-  );
-  const maxCum = Math.max(expenseCents, ...dailyCum, 100);
+function buildMonthlySpendSvg(expenseCents, txs = [], daysInMonth = 30) {
+  const numBuckets = 15;
+  const buckets = Array.from({ length: numBuckets }, (_, i) => {
+    const day = Math.min(daysInMonth, Math.max(1, Math.round(1 + (i / (numBuckets - 1)) * (daysInMonth - 1))));
+    const cumCents = txs
+      .filter(t => t.type === 'expense' && parseInt((t.date || '').split('-')[2] || '1', 10) <= day)
+      .reduce((s, t) => s + (Number(t.amountCents) || 0), 0);
+    return { day, cumCents };
+  });
+  const maxCum = Math.max(expenseCents, ...buckets.map(b => b.cumCents), 100);
   const hasSpend = expenseCents > 0;
 
-  const pts = days.map((day, idx) => {
-    const x = 4 + (idx / (days.length - 1)) * 284;
-    const y = hasSpend ? (56 - (dailyCum[idx] / maxCum) * 40) : 56;
-    return { x, y, day, cumCents: dailyCum[idx] };
+  const pts = buckets.map((b, idx) => {
+    const x = 4 + (idx / (numBuckets - 1)) * 284;
+    const y = hasSpend ? (56 - (b.cumCents / maxCum) * 40) : 56;
+    return { x, y, day: b.day, cumCents: b.cumCents };
   });
 
   const pathLine = buildSmoothSvgPath(pts);
@@ -1042,11 +1107,11 @@ function buildMonthlySpendSvg(expenseCents, txs = []) {
   const endY = pts[pts.length - 1].y;
 
   const zones = pts.map((p, idx) => {
-    const x = idx * (296 / 12);
-    const w = 296 / 12;
+    const x = idx * (296 / numBuckets);
+    const w = 296 / numBuckets;
     return `<rect x="${x.toFixed(1)}" y="0" width="${w.toFixed(1)}" height="72" fill="transparent"
       class="chart-hover-zone"
-      data-tip-title="Dia ${p.day} (acumulado)"
+      data-tip-title="Até dia ${p.day} (acumulado)"
       data-tip-val="${fmtBRL(p.cumCents)}" />`;
   }).join('');
 
@@ -1120,30 +1185,55 @@ function buildReserveRingSvg(pct) {
   `;
 }
 
-function buildAccumulatedAreaSvg(expenseCents, mode, partialResultCents = 0) {
+function buildAccumulatedAreaSvg(expenseCents, mode, partialResultCents = 0, txs = [], daysInMonth = 30) {
   const color = mode === 'saldo' ? '#49b6eb' : '#f16364';
-  const targetCents = mode === 'saldo' ? partialResultCents : mode === 'por-dia' ? Math.round(expenseCents / 12) : expenseCents;
   const labelPrefix = mode === 'saldo' ? 'Saldo' : mode === 'por-dia' ? 'Média/dia' : 'Acumulado';
 
-  const points = [
-    { x: 0, w: 140, title: `Dia 1–3 (${labelPrefix})`, valCents: 0 },
-    { x: 140, w: 140, title: `Dia 4–6 (${labelPrefix})`, valCents: 0 },
-    { x: 280, w: 140, title: `Dia 7–9 (${labelPrefix})`, valCents: Math.round(targetCents * 0.65) },
-    { x: 420, w: 140, title: `Dia 10–12 (${labelPrefix})`, valCents: targetCents }
-  ];
+  const numSteps = 10;
+  const series = Array.from({ length: numSteps }, (_, idx) => {
+    const dayEnd = Math.min(daysInMonth, Math.max(1, Math.round(1 + (idx / (numSteps - 1)) * (daysInMonth - 1))));
+    const expUntil = txs
+      .filter(t => t.type === 'expense' && parseInt((t.date || '').split('-')[2] || '1', 10) <= dayEnd)
+      .reduce((s, t) => s + (Number(t.amountCents) || 0), 0);
+    const incUntil = txs
+      .filter(t => t.type === 'income' && parseInt((t.date || '').split('-')[2] || '1', 10) <= dayEnd)
+      .reduce((s, t) => s + (Number(t.amountCents) || 0), 0);
+    const valCents = mode === 'saldo'
+      ? (incUntil - expUntil)
+      : mode === 'por-dia'
+        ? Math.round(expUntil / Math.max(1, dayEnd))
+        : expUntil;
+    return { dayEnd, valCents };
+  });
 
-  const hoverZones = points.map(p => `
-    <rect x="${p.x}" y="0" width="${p.w}" height="52" fill="transparent"
+  const allVals = series.map(s => s.valCents);
+  const minVal = Math.min(0, ...allVals);
+  const maxVal = Math.max(100, ...allVals);
+  const span = Math.max(1, maxVal - minVal);
+  const hasAny = txs.length > 0;
+
+  const pts = series.map((s, idx) => {
+    const x = 4 + (idx / (numSteps - 1)) * 548;
+    const y = hasAny ? (42 - ((s.valCents - minVal) / span) * 28) : 42;
+    return { x, y, dayEnd: s.dayEnd, valCents: s.valCents };
+  });
+
+  const pathLine = buildSmoothSvgPath(pts);
+  const endY = pts[pts.length - 1].y;
+  const colW = 560 / numSteps;
+
+  const hoverZones = pts.map((p, idx) => `
+    <rect x="${(idx * colW).toFixed(1)}" y="0" width="${colW.toFixed(1)}" height="52" fill="transparent"
       class="chart-hover-zone"
-      data-tip-title="${p.title}"
+      data-tip-title="Até dia ${p.dayEnd} (${labelPrefix})"
       data-tip-val="${fmtBRL(p.valCents)}" />
   `).join('');
 
   return `
     <svg width="100%" viewBox="0 0 560 52" style="display:block; height:auto; max-height:62px;">
       <line x1="0" y1="44" x2="560" y2="44" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
-      <path d="M 0 42 L 260 42 C 300 42, 320 14, 360 14 L 555 14" fill="none" stroke="${color}" stroke-width="2.2"/>
-      <circle cx="555" cy="14" r="4" fill="#f59e0b" stroke="#fff" stroke-width="1.2"/>
+      <path d="${pathLine}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linecap="round"/>
+      <circle cx="552" cy="${endY.toFixed(1)}" r="4" fill="#f59e0b" stroke="#fff" stroke-width="1.2"/>
       ${hoverZones}
     </svg>
   `;
@@ -1268,7 +1358,13 @@ function renderTransacoesView() {
           <h3 class="card-title" style="font-size:15px;">Lançamentos & Filtros</h3>
           <p class="vs-prev">Combine período, categoria, conta, tag ou texto e edite várias transações em lote.</p>
         </div>
-        <button class="btn-primary" id="btn-new-tx-page">+ Lançamento Rápido</button>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <input type="file" id="input-import-statement" accept=".csv,.ofx,.txt" style="display:none;" />
+          <button class="btn-secondary" id="btn-import-statement" title="Importar extrato ou fatura CSV / OFX do Nubank, Mercado Pago ou outros bancos">
+            ↑ Importar Extrato (CSV/OFX)
+          </button>
+          <button class="btn-primary" id="btn-new-tx-page">+ Lançamento Rápido</button>
+        </div>
       </div>
 
       <div class="tx-filters-grid">
@@ -1326,17 +1422,201 @@ function renderTransacoesView() {
   `;
 }
 
+function parseImportedStatementText(rawText, fileName = '') {
+  const text = (rawText || '').trim();
+  if (!text) return [];
+  const items = [];
+  const defaultYearMonth = state.selectedMonth || getTodayISO().slice(0, 7);
+
+  // 1. Formato OFX (<STMTTRN>...</STMTTRN>)
+  if (/<STMTTRN>/i.test(text) || fileName.toLowerCase().endsWith('.ofx')) {
+    const blocks = text.split(/<STMTTRN>/i).slice(1);
+    blocks.forEach((blk, idx) => {
+      const amtMatch = blk.match(/<TRNAMT>\s*([+-]?[\d.,]+)/i);
+      const dtMatch = blk.match(/<DTPOSTED>\s*(\d{8})/i);
+      const memoMatch = blk.match(/<(?:MEMO|NAME)>\s*([^<\r\n]+)/i);
+      const idMatch = blk.match(/<FITID>\s*([^<\r\n]+)/i);
+      if (!amtMatch) return;
+      const rawVal = parseFloat(amtMatch[1].replace(',', '.'));
+      if (isNaN(rawVal) || rawVal === 0) return;
+      let dateISO = `${defaultYearMonth}-10`;
+      if (dtMatch && dtMatch[1].length === 8) {
+        const d = dtMatch[1];
+        dateISO = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
+      }
+      const desc = (memoMatch ? memoMatch[1].trim() : `Lançamento OFX #${idx + 1}`);
+      items.push({
+        externalId: idMatch ? `ofx-${idMatch[1].trim()}` : null,
+        date: dateISO,
+        description: desc,
+        amountCents: Math.round(Math.abs(rawVal) * 100),
+        type: rawVal < 0 ? 'expense' : 'income'
+      });
+    });
+    return items;
+  }
+
+  // 2. Formato CSV (Nubank, Mercado Pago, Inter, Itaú, genérico)
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length < 2) return [];
+  const sep = lines[0].includes(';') ? ';' : ',';
+  const splitCSV = (line) => {
+    const out = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') { inQuotes = !inQuotes; continue; }
+      if (ch === sep && !inQuotes) { out.push(cur.trim()); cur = ''; continue; }
+      cur += ch;
+    }
+    out.push(cur.trim());
+    return out;
+  };
+
+  const headers = splitCSV(lines[0]).map(h => h.toLowerCase());
+  const dateIdx = headers.findIndex(h => /date|data|dt|release_date/.test(h));
+  const descIdx = headers.findIndex(h => /title|descri|hist|memo|estabelecimento|transaction_type|nome/.test(h));
+  const amtIdx = headers.findIndex(h => /amount|valor|value|net_amount|quantia/.test(h));
+  const idIdx = headers.findIndex(h => /id|identificador|reference/.test(h));
+
+  const isCreditCardBill = headers.includes('title') && headers.includes('amount') && !headers.includes('identificador');
+
+  for (let i = 1; i < lines.length; i++) {
+    const cols = splitCSV(lines[i]);
+    if (cols.length < 2) continue;
+    const rawDate = cols[dateIdx >= 0 ? dateIdx : 0] || '';
+    const rawDesc = cols[descIdx >= 0 ? descIdx : Math.min(1, cols.length - 1)] || `Item importado #${i}`;
+    const rawAmtStr = cols[amtIdx >= 0 ? amtIdx : (cols.length - 1)] || '';
+    const extId = idIdx >= 0 ? cols[idIdx] : null;
+
+    let cleanAmt = rawAmtStr.replace(/[R$\s]/g, '');
+    if (cleanAmt.includes(',') && cleanAmt.includes('.')) {
+      cleanAmt = cleanAmt.replace(/\./g, '').replace(',', '.');
+    } else if (cleanAmt.includes(',')) {
+      cleanAmt = cleanAmt.replace(',', '.');
+    }
+    const numVal = parseFloat(cleanAmt);
+    if (isNaN(numVal) || numVal === 0) continue;
+
+    let dateISO = `${defaultYearMonth}-10`;
+    if (/^\d{4}-\d{2}-\d{2}/.test(rawDate)) {
+      dateISO = rawDate.slice(0, 10);
+    } else if (/^\d{2}\/\d{2}\/\d{4}/.test(rawDate)) {
+      const [dd, mm, yyyy] = rawDate.slice(0, 10).split('/');
+      dateISO = `${yyyy}-${mm}-${dd}`;
+    } else if (/^\d{2}-\d{2}-\d{4}/.test(rawDate)) {
+      const [dd, mm, yyyy] = rawDate.slice(0, 10).split('-');
+      dateISO = `${yyyy}-${mm}-${dd}`;
+    }
+
+    // Fatura CSV do Nubank (date,category,title,amount) traz compras como valores positivos
+    const type = isCreditCardBill ? (numVal > 0 ? 'expense' : 'income') : (numVal < 0 ? 'expense' : 'income');
+
+    items.push({
+      externalId: extId ? `csv-${extId}` : null,
+      date: dateISO,
+      description: rawDesc,
+      amountCents: Math.round(Math.abs(numVal) * 100),
+      type,
+      isCardBill: isCreditCardBill
+    });
+  }
+  return items;
+}
+
 function bindTransacoesEvents() {
   const newBtn = document.getElementById('btn-new-tx-page');
   if (newBtn) newBtn.addEventListener('click', () => openTransactionModal());
 
+  const importBtn = document.getElementById('btn-import-statement');
+  const importInput = document.getElementById('input-import-statement');
+  if (importBtn && importInput) {
+    importBtn.addEventListener('click', () => importInput.click());
+    importInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const parsed = parseImportedStatementText(String(reader.result || ''), file.name);
+        importInput.value = '';
+        if (parsed.length === 0) {
+          openDialogModal({
+            title: 'Nenhum lançamento encontrado',
+            message: 'Não foi possível identificar linhas válidas neste arquivo. Use um arquivo .CSV ou .OFX exportado do Nubank, Mercado Pago ou do seu banco.',
+            confirmLabel: 'Entendi',
+            onConfirm: () => {}
+          });
+          return;
+        }
+        const defaultAccName = state.accounts[0]?.name || 'Nubank';
+        openDialogModal({
+          title: `Importar ${parsed.length} lançamento(s)`,
+          message: `Foram identificados ${parsed.length} lançamentos em "${file.name}". Digite o nome da conta/cartão de destino (ex: ${state.accounts.map(a => a.name).join(', ')}):`,
+          inputLabel: 'Conta ou Cartão de destino',
+          inputType: 'text',
+          defaultValue: defaultAccName,
+          placeholder: defaultAccName,
+          confirmLabel: 'Importar Agora',
+          onConfirm: (accNameInput) => {
+            const targetAcc = state.accounts.find(
+              a => a.name.toLowerCase().includes((accNameInput || '').trim().toLowerCase())
+            ) || state.accounts[0];
+            if (!targetAcc) return;
+
+            undoSnapshot = JSON.parse(JSON.stringify(state.transactions));
+            let importedCount = 0;
+
+            parsed.forEach((item, idx) => {
+              const isDup = state.transactions.some(t =>
+                (item.externalId && t.externalId === item.externalId) ||
+                (t.date === item.date && t.amountCents === item.amountCents && (t.description || '').toLowerCase() === item.description.toLowerCase())
+              );
+              if (isDup) return;
+
+              const matchedCatId = matchCategoryByRules(item.description)
+                || (item.type === 'income' ? 'cat-receita' : (state.categories[0]?.id || 'cat-delivery'));
+              const method = (item.isCardBill || targetAcc.type === 'Cartão de Crédito')
+                ? 'Cartão de Crédito'
+                : 'Conta Corrente / Pix';
+
+              state.transactions.push({
+                id: 'tx-imp-' + Date.now() + '-' + idx,
+                externalId: item.externalId || undefined,
+                type: item.type,
+                amountCents: item.amountCents,
+                description: item.description,
+                tag: 'importado',
+                categoryId: matchedCatId,
+                accountId: targetAcc.id,
+                date: item.date,
+                method
+              });
+              importedCount++;
+            });
+
+            if (importedCount > 0 && parsed[0]?.date) {
+              state.selectedMonth = parsed[0].date.slice(0, 7);
+            }
+            saveState();
+            renderApp();
+            showUndoToast(`${importedCount} lançamento(s) importado(s) com sucesso.`);
+          }
+        });
+      };
+      reader.readAsText(file);
+    });
+  }
+
   const searchInput = document.getElementById('filter-search');
   if (searchInput) {
     searchInput.addEventListener('input', (e) => {
+      const selStart = e.target.selectionStart ?? e.target.value.length;
+      const selEnd = e.target.selectionEnd ?? selStart;
       txFilter.search = e.target.value;
       renderApp();
       const el = document.getElementById('filter-search');
-      if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+      if (el) { el.focus(); el.setSelectionRange(selStart, selEnd); }
     });
   }
 
@@ -1784,19 +2064,32 @@ function renderFaturasView() {
       return getInvoiceMonthForTransaction(t, acc) === state.selectedMonth;
     }).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
+    // Parcelas futuras já comprometidas no cartão (faturas de meses posteriores a state.selectedMonth)
+    const futureInstallmentsCents = state.transactions
+      .filter(t => {
+        if (t.accountId !== acc.id || t.type !== 'expense') return false;
+        if (t.method !== 'Cartão de Crédito' && acc.type !== 'Cartão de Crédito') return false;
+        return getInvoiceMonthForTransaction(t, acc) > state.selectedMonth;
+      })
+      .reduce((s, t) => s + (Number(t.amountCents) || 0), 0);
+
     const txSpentCents = accTxs.reduce((s, t) => s + (Number(t.amountCents) || 0), 0);
     const meta = getInvoiceMeta(acc.id);
     const spentCents = Math.max(0, txSpentCents + (Number(meta.adjustmentCents) || 0));
     const limitCents = Number(acc.limitCents) || 200000;
-    const availableCents = Math.max(0, limitCents - spentCents);
-    const pct = limitCents > 0 ? Math.min(100, Math.round((spentCents / limitCents) * 100)) : 0;
+    const activeInvoiceDebtCents = meta.status === 'paid' ? 0 : spentCents;
+    const totalCommittedCents = activeInvoiceDebtCents + futureInstallmentsCents;
+    const availableCents = Math.max(0, limitCents - totalCommittedCents);
+    const pct = limitCents > 0 ? Math.min(100, Math.round((totalCommittedCents / limitCents) * 100)) : 0;
+    const curBarPct = limitCents > 0 ? Math.min(100, (activeInvoiceDebtCents / limitCents) * 100) : 0;
+    const futBarPct = limitCents > 0 ? Math.min(Math.max(0, 100 - curBarPct), (futureInstallmentsCents / limitCents) * 100) : 0;
 
     totalFaturasCents += spentCents;
     totalLimiteCents += limitCents;
     if (meta.status !== 'paid') totalOpenCents += spentCents;
 
     const barColor = pct >= 85 ? 'var(--coral-red)' : pct >= 60 ? 'var(--amber-gold)' : 'var(--cyan-accent)';
-    const barWidth = spentCents > 0 ? Math.max(2, pct) : 0;
+    const barWidth = activeInvoiceDebtCents > 0 ? Math.max(2, curBarPct) : 0;
     const dueDateStr = `${String(acc.dueDay || 12).padStart(2, '0')}/${selMonth}/${selYear}`;
 
     const invoiceItems = accTxs.length === 0
@@ -1835,13 +2128,15 @@ function renderFaturasView() {
           <div style="margin-top:18px;">
             <div class="fatura-amount-row">
               <div class="big-currency sensitive-val">${fmtBRL(spentCents)}</div>
-              <span class="cat-pct-badge">${pct}% do limite</span>
+              <span class="cat-pct-badge">${pct}% comprometido</span>
             </div>
-            <div class="cat-progress-track" style="margin-top:10px;">
-              <div class="cat-progress-fill" style="width:${barWidth}%; background:${barColor};"></div>
+            <div class="cat-progress-track" style="margin-top:10px; display:flex; overflow:hidden;">
+              <div class="cat-progress-fill" style="width:${barWidth.toFixed(1)}%; background:${barColor};" title="Fatura atual: ${fmtBRL(activeInvoiceDebtCents)}"></div>
+              ${futBarPct > 0 ? `<div class="cat-progress-fill" style="width:${Math.max(2, futBarPct).toFixed(1)}%; background:#a78bfa;" title="Parcelas futuras: ${fmtBRL(futureInstallmentsCents)}"></div>` : ''}
             </div>
-            <div class="fatura-meta-row">
-              <span class="sensitive-val">Disponível: <b>${fmtBRL(availableCents)}</b></span>
+            <div class="fatura-meta-row" style="flex-wrap:wrap; gap:6px;">
+              <span class="sensitive-val">Livre real: <b style="color:var(--green-emerald);">${fmtBRL(availableCents)}</b></span>
+              ${futureInstallmentsCents > 0 ? `<span class="sensitive-val" style="color:#a78bfa;">Parcelado futuro: <b>${fmtBRL(futureInstallmentsCents)}</b></span>` : ''}
               <span class="sensitive-val">Limite: ${fmtBRL(limitCents)}</span>
             </div>
           </div>
@@ -1853,8 +2148,8 @@ function renderFaturasView() {
 
         <div class="fatura-card-actions">
           <button class="btn-secondary" data-add-tx-account="${acc.id}">+ Lançar na fatura</button>
-          <button class="btn-primary" data-toggle-paid-invoice="${acc.id}" style="padding:7px 14px; font-size:12px;">
-            ${meta.status === 'paid' ? 'Reabrir Fatura' : 'Marcar como Paga'}
+          <button class="btn-primary" data-toggle-paid-invoice="${acc.id}" data-invoice-total="${spentCents}" style="padding:7px 14px; font-size:12px;">
+            ${meta.status === 'paid' ? 'Reabrir Fatura' : 'Pagar Fatura (Debitar Conta)'}
           </button>
         </div>
       </div>
@@ -1906,10 +2201,56 @@ function bindFaturasEvents() {
   document.querySelectorAll('[data-toggle-paid-invoice]').forEach(btn => {
     btn.addEventListener('click', () => {
       const accId = btn.dataset.togglePaidInvoice;
+      const acc = getAccountById(accId);
       const meta = getInvoiceMeta(accId);
-      setInvoiceMeta(accId, { status: meta.status === 'paid' ? 'open' : 'paid' });
-      saveState();
-      renderApp();
+      const paymentTxId = `tx-invpay-${state.selectedMonth}-${accId}`;
+
+      if (meta.status === 'paid') {
+        setInvoiceMeta(accId, { status: 'open', paidFromAccountId: null });
+        state.transactions = state.transactions.filter(t => t.id !== paymentTxId);
+        saveState();
+        renderApp();
+        showUndoToast(`Fatura ${acc.name} reaberta e saldo restaurado.`);
+        return;
+      }
+
+      const spentCents = Number(btn.dataset.invoiceTotal) || 0;
+      const defaultPayer = state.accounts.find(a => a.type !== 'Cartão de Crédito') || state.accounts[0];
+      openDialogModal({
+        title: `Pagar Fatura — ${acc.name}`,
+        message: `Valor da fatura: ${fmtBRL(spentCents)}. Informe o nome da conta bancária de onde sairá o dinheiro para debitar o saldo automaticamente:`,
+        inputLabel: 'Debitar da conta',
+        inputType: 'text',
+        defaultValue: defaultPayer ? defaultPayer.name : 'Nubank',
+        placeholder: 'Ex: Nubank, Mercado Pago',
+        confirmLabel: 'Confirmar Pagamento',
+        onConfirm: (payerName) => {
+          const payerAcc = state.accounts.find(
+            a => a.name.toLowerCase().includes((payerName || '').trim().toLowerCase())
+          ) || defaultPayer || acc;
+
+          setInvoiceMeta(accId, { status: 'paid', paidFromAccountId: payerAcc.id });
+          state.transactions = state.transactions.filter(t => t.id !== paymentTxId);
+          if (spentCents > 0) {
+            const dueDayStr = String(Math.min(28, Math.max(1, Number(acc.dueDay) || 12))).padStart(2, '0');
+            state.transactions.push({
+              id: paymentTxId,
+              isInvoicePayment: true,
+              type: 'expense',
+              amountCents: spentCents,
+              description: `Pagamento Fatura ${acc.name}`,
+              tag: 'fatura-paga',
+              categoryId: state.categories[0]?.id || 'cat-moradia',
+              accountId: payerAcc.id,
+              date: `${state.selectedMonth}-${dueDayStr}`,
+              method: 'Pagamento de Fatura'
+            });
+          }
+          saveState();
+          renderApp();
+          showUndoToast(`Fatura paga com débito em ${payerAcc.name}.`);
+        }
+      });
     });
   });
 
@@ -2085,8 +2426,24 @@ function bindMetasEvents() {
             if (goal.id === 'goal-1' && state.assets.length > 0) {
               state.assets[0].amountCents = (Number(state.assets[0].amountCents) || 0) + valCents;
             }
+            const sourceAcc = state.accounts.find(a => a.type !== 'Cartão de Crédito') || state.accounts[0];
+            if (sourceAcc) {
+              state.transactions.push({
+                id: 'tx-goal-' + Date.now(),
+                isAssetTransfer: true,
+                type: 'expense',
+                amountCents: valCents,
+                description: `Aporte na Meta: ${goal.title}`,
+                tag: 'aporte-meta',
+                categoryId: state.categories[0]?.id || 'cat-moradia',
+                accountId: sourceAcc.id,
+                date: getTodayISO().startsWith(state.selectedMonth) ? getTodayISO() : `${state.selectedMonth}-10`,
+                method: 'Aporte / Investimento'
+              });
+            }
             saveState();
             renderApp();
+            showUndoToast(`Aporte de ${fmtBRL(valCents)} debitado de ${sourceAcc?.name || 'Conta'}.`);
           }
         }
       });
@@ -2106,6 +2463,8 @@ function calcMonthlyYieldCents(amountCents, cdbPercent, cdiAnnualRate) {
 function renderPatrimonioView() {
   const m = computeMonthMetrics();
   const cdiRate = Number(state.cdiRate) || 11.25;
+  const irRate = state.irRate !== undefined ? Number(state.irRate) : 17.5;
+  const netFactor = Math.max(0, 1 - irRate / 100);
 
   let totalMonthlyYieldCents = 0;
   const classTotals = {};
@@ -2138,6 +2497,8 @@ function renderPatrimonioView() {
   });
 
   const totalAnnualYieldCents = totalMonthlyYieldCents * 12;
+  const totalNetMonthlyYieldCents = Math.round(totalMonthlyYieldCents * netFactor);
+  const totalNetAnnualYieldCents = totalNetMonthlyYieldCents * 12;
   const allocEntries = Object.entries(classTotals).filter(([, val]) => val > 0);
   const allocSegments = m.totalInvestmentsCents > 0 && allocEntries.length > 0
     ? allocEntries.map(([cls, val]) => {
@@ -2187,7 +2548,8 @@ function renderPatrimonioView() {
               ${tierNote}
             </td>
             <td class="sensitive-val" style="color:var(--green-emerald); font-weight:600;">
-              +${fmtBRL(monthlyYieldCents)}/mês
+              <div>+${fmtBRL(Math.round(monthlyYieldCents * netFactor))}/mês <span style="font-size:10px; color:var(--text-muted); font-weight:500;">(líq.)</span></div>
+              <div style="font-size:10.5px; color:var(--text-muted); font-weight:400;">Bruto: +${fmtBRL(monthlyYieldCents)}/mês</div>
             </td>
             <td class="sensitive-val" style="font-weight:700;">${fmtBRL(amtCents)}</td>
             <td class="sensitive-val" style="color:${(a.weeklyDeltaCents || 0) >= 0 ? 'var(--green-emerald)' : 'var(--coral-red)'};">
@@ -2219,11 +2581,11 @@ function renderPatrimonioView() {
         <span style="font-size:12px; color:var(--text-secondary);">% a.a.</span>
       </div>
       <div class="cdi-control-group">
-        <span style="font-size:11.5px; color:var(--text-muted);">Atalhos p/ 1º CDB:</span>
-        <button class="btn-secondary" data-preset-cdb="100" style="padding:5px 10px; font-size:11.5px;">100% CDI</button>
-        <button class="btn-secondary" data-preset-cdb="105" style="padding:5px 10px; font-size:11.5px;">105% CDI</button>
-        <button class="btn-secondary" data-preset-cdb="110" style="padding:5px 10px; font-size:11.5px;">110% CDI</button>
-        <button class="btn-secondary" data-preset-cdb="120" style="padding:5px 10px; font-size:11.5px;">120% CDI</button>
+        <span style="font-size:11.5px; color:var(--text-muted);">Alíquota IR Regressivo:</span>
+        <button class="btn-secondary ${irRate === 22.5 ? 'active' : ''}" data-ir-rate="22.5" style="padding:5px 9px; font-size:11px; ${irRate === 22.5 ? 'border-color:var(--cyan-accent); color:var(--cyan-accent);' : ''}">22,5% (até 6m)</button>
+        <button class="btn-secondary ${irRate === 20 ? 'active' : ''}" data-ir-rate="20" style="padding:5px 9px; font-size:11px; ${irRate === 20 ? 'border-color:var(--cyan-accent); color:var(--cyan-accent);' : ''}">20% (6–12m)</button>
+        <button class="btn-secondary ${irRate === 17.5 ? 'active' : ''}" data-ir-rate="17.5" style="padding:5px 9px; font-size:11px; ${irRate === 17.5 ? 'border-color:var(--cyan-accent); color:var(--cyan-accent);' : ''}">17,5% (1–2a)</button>
+        <button class="btn-secondary ${irRate === 15 ? 'active' : ''}" data-ir-rate="15" style="padding:5px 9px; font-size:11px; ${irRate === 15 ? 'border-color:var(--cyan-accent); color:var(--cyan-accent);' : ''}">15% (+2a)</button>
       </div>
     </div>
 
@@ -2234,9 +2596,9 @@ function renderPatrimonioView() {
         <div class="vs-prev sensitive-val">Variação na semana: ${fmtBRL(m.weeklyInvDeltaCents, true)}</div>
       </div>
       <div class="card">
-        <div class="card-title">Rendimento Estimado (Bruto)</div>
-        <div class="partial-value positive sensitive-val" style="font-size:24px; margin-top:8px;">+${fmtBRL(totalMonthlyYieldCents)}<span style="font-size:13px; font-weight:400; color:var(--text-secondary);"> / mês</span></div>
-        <div class="vs-prev sensitive-val">Projeção anual: +${fmtBRL(totalAnnualYieldCents)} / ano</div>
+        <div class="card-title">Rendimento Líquido (pós-IR ${String(irRate).replace('.', ',')}%)</div>
+        <div class="partial-value positive sensitive-val" style="font-size:24px; margin-top:8px;">+${fmtBRL(totalNetMonthlyYieldCents)}<span style="font-size:13px; font-weight:400; color:var(--text-secondary);"> / mês</span></div>
+        <div class="vs-prev sensitive-val">Bruto: +${fmtBRL(totalMonthlyYieldCents)}/mês · Anual líq.: +${fmtBRL(totalNetAnnualYieldCents)}</div>
       </div>
       <div class="card">
         <div class="card-title">Alocação da Carteira</div>
@@ -2268,6 +2630,8 @@ function renderPatrimonioView() {
 
 function updateAssetLiveSummary() {
   const cdiRate = Number(state.cdiRate) || 11.25;
+  const irRate = state.irRate !== undefined ? Number(state.irRate) : 17.5;
+  const netFactor = Math.max(0, 1 - irRate / 100);
   const amtCents = toCents(document.getElementById('ast-amount')?.value);
   const basePct = parseFloat(document.getElementById('ast-cdb-pct')?.value);
   const capCents = toCents(document.getElementById('ast-promo-cap')?.value);
@@ -2282,10 +2646,11 @@ function updateAssetLiveSummary() {
   } else {
     monthlyCents = calcMonthlyYieldCents(amtCents, effBase, cdiRate);
   }
+  const netMonthlyCents = Math.round(monthlyCents * netFactor);
   const mEl = document.getElementById('ast-live-monthly');
   const aEl = document.getElementById('ast-live-annual');
-  if (mEl) mEl.textContent = `+${fmtBRL(monthlyCents)}/mês`;
-  if (aEl) aEl.textContent = `+${fmtBRL(monthlyCents * 12)}/ano`;
+  if (mEl) mEl.textContent = `+${fmtBRL(netMonthlyCents)}/mês (líq.)`;
+  if (aEl) aEl.textContent = `+${fmtBRL(netMonthlyCents * 12)}/ano`;
 }
 
 function openAssetModal(assetId) {
@@ -2328,11 +2693,11 @@ function bindPatrimonioEvents() {
     });
   }
 
-  document.querySelectorAll('[data-preset-cdb]').forEach(btn => {
+  document.querySelectorAll('[data-ir-rate]').forEach(btn => {
     btn.addEventListener('click', () => {
-      const pct = Number(btn.dataset.presetCdb);
-      if (state.assets.length > 0) {
-        state.assets[0].cdbPercent = pct;
+      const rate = parseFloat(btn.dataset.irRate);
+      if (!isNaN(rate)) {
+        state.irRate = rate;
         saveState();
         renderApp();
       }
@@ -2364,8 +2729,24 @@ function bindPatrimonioEvents() {
           if (valCents > 0) {
             asset.amountCents = (Number(asset.amountCents) || 0) + valCents;
             asset.weeklyDeltaCents = (Number(asset.weeklyDeltaCents) || 0) + valCents;
+            const sourceAcc = state.accounts.find(a => a.type !== 'Cartão de Crédito') || state.accounts[0];
+            if (sourceAcc) {
+              state.transactions.push({
+                id: 'tx-ast-' + Date.now(),
+                isAssetTransfer: true,
+                type: 'expense',
+                amountCents: valCents,
+                description: `Aporte em ${asset.name}`,
+                tag: 'investimento',
+                categoryId: state.categories[0]?.id || 'cat-moradia',
+                accountId: sourceAcc.id,
+                date: getTodayISO().startsWith(state.selectedMonth) ? getTodayISO() : `${state.selectedMonth}-10`,
+                method: 'Aporte / Investimento'
+              });
+            }
             saveState();
             renderApp();
+            showUndoToast(`Aporte de ${fmtBRL(valCents)} debitado de ${sourceAcc?.name || 'Conta'}.`);
           }
         }
       });
@@ -2428,7 +2809,14 @@ function renderProjecaoView() {
     .filter(r => r.active && r.type !== 'income')
     .reduce((s, r) => s + (Number(r.amountCents) || 0), 0);
   const goalMonthlyDeductionCents = projState.deductGoals
-    ? Math.round(state.goals.reduce((s, g) => s + Math.max(0, (Number(g.targetCents) - Number(g.currentCents)) / 12), 0))
+    ? Math.round(state.goals.reduce((s, g) => {
+        const remCents = Math.max(0, (Number(g.targetCents) || 0) - (Number(g.currentCents) || 0));
+        if (remCents <= 0) return s;
+        const [selY, selM] = (state.selectedMonth || '2026-11').split('-').map(Number);
+        const [dlY, dlM] = (g.deadline || '2027-11').split('-').map(Number);
+        const monthsLeft = Math.max(1, (dlY - selY) * 12 + (dlM - selM));
+        return s + (remCents / monthsLeft);
+      }, 0))
     : 0;
 
   let runningBalanceCents = state.accounts

@@ -13,10 +13,14 @@ export async function GET(req: NextRequest) {
     if (!workspace) {
       return NextResponse.json({ ok: true, mode: 'postgres', state: null });
     }
+    const parsedState = JSON.parse(workspace.stateJson);
+    if (parsedState && typeof parsedState === 'object') {
+      parsedState.privacyMode = Boolean(parsedState.privacyMode ?? workspace.hideValues);
+    }
     return NextResponse.json({
       ok: true,
       mode: 'postgres',
-      state: JSON.parse(workspace.stateJson),
+      state: parsedState,
     });
   } catch (err) {
     return NextResponse.json(
@@ -52,7 +56,7 @@ export async function PUT(req: NextRequest) {
         monthlyBudgetCents: Math.round(Number(profile.monthlyBudgetCents) || 0),
         emergencyGoalCents: Math.round(Number(profile.emergencyGoalCents) || 33000),
         theme: String(state.theme || 'dark'),
-        hideValues: Boolean(state.hideValues),
+        hideValues: Boolean(state.privacyMode ?? state.hideValues),
         lastUsedAccountId: state.lastUsedAccountId || null,
         stateJson: JSON.stringify(state),
       },
@@ -64,7 +68,7 @@ export async function PUT(req: NextRequest) {
         monthlyBudgetCents: Math.round(Number(profile.monthlyBudgetCents) || 0),
         emergencyGoalCents: Math.round(Number(profile.emergencyGoalCents) || 33000),
         theme: String(state.theme || 'dark'),
-        hideValues: Boolean(state.hideValues),
+        hideValues: Boolean(state.privacyMode ?? state.hideValues),
         lastUsedAccountId: state.lastUsedAccountId || null,
         stateJson: JSON.stringify(state),
       },

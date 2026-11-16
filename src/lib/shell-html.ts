@@ -283,6 +283,10 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
                     <option value="10">10x</option>
                     <option value="11">11x</option>
                     <option value="12">12x</option>
+                    <option value="15">15x</option>
+                    <option value="18">18x</option>
+                    <option value="21">21x</option>
+                    <option value="24">24x</option>
                   </select>
                   <span id="tx-installment-preview" class="field-suffix" style="color:var(--cyan-accent);"></span>
                 </div>
