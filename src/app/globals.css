@@ -3215,11 +3215,27 @@ body.privacy-hidden .sensitive-val {
   min-width: 0;
   height: 100%;
   background: transparent;
-  border: none;
-  outline: none;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
   color: #f3f6f8;
   font-size: 13.5px;
   font-family: inherit;
+}
+
+.auth-gate-input:focus,
+.auth-gate-input:focus-visible {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.auth-gate-input:-webkit-autofill,
+.auth-gate-input:-webkit-autofill:hover,
+.auth-gate-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #f3f6f8 !important;
+  -webkit-box-shadow: 0 0 0px 1000px #09131c inset !important;
+  transition: background-color 5000s ease-in-out 0s;
 }
 
 .auth-gate-input::placeholder {
@@ -3498,6 +3514,16 @@ body.privacy-hidden .sensitive-val {
 :focus-visible {
   outline: 2px solid var(--cyan-accent);
   outline-offset: 2px;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+.auth-gate-input:focus-visible,
+.form-input:focus-visible,
+.form-select:focus-visible,
+.otp-digit-box:focus-visible {
+  outline: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
