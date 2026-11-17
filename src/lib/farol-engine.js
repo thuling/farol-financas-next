@@ -4605,6 +4605,8 @@ function openDialogModal({ title, message, inputLabel, inputType = 'text', defau
 // ============================================================
 const AUTH_SESSION_STORAGE_KEY = 'farol_auth_session_v1';
 let cloudSessionUser = null;
+let otpCooldownInterval = null;
+let pendingOtpRemember = true;
 
 function setAuthGateVisibility(showGate) {
   const gate = document.getElementById('auth-gate-screen');
@@ -4613,8 +4615,110 @@ function setAuthGateVisibility(showGate) {
   if (shell) shell.style.display = showGate ? 'none' : 'grid';
 }
 
+function startOtpCooldownTimer(seconds = 60) {
+  const resendBtn = document.getElementById('btn-gate-resend-otp');
+  if (!resendBtn) return;
+  if (otpCooldownInterval) clearInterval(otpCooldownInterval);
+
+  let rem = Math.max(0, Math.round(seconds));
+  const updateLabel = () => {
+    if (rem > 0) {
+      resendBtn.disabled = true;
+      resendBtn.textContent = `Reenviar código (${rem}s)`;
+    } else {
+      resendBtn.disabled = false;
+      resendBtn.textContent = 'Reenviar código agora';
+      if (otpCooldownInterval) {
+        clearInterval(otpCooldownInterval);
+        otpCooldownInterval = null;
+      }
+    }
+  };
+  updateLabel();
+  if (rem > 0) {
+    otpCooldownInterval = setInterval(() => {
+      rem -= 1;
+      updateLabel();
+    }, 1000);
+  }
+}
+
+function getOtpBoxes() {
+  return Array.from(document.querySelectorAll('.otp-digit-box'));
+}
+
+function clearAndFocusOtpBoxes() {
+  const boxes = getOtpBoxes();
+  boxes.forEach(b => { b.value = ''; });
+  if (boxes[0]) setTimeout(() => boxes[0].focus(), 40);
+}
+
+function fillOtpBoxesWithCode(codeStr) {
+  const digits = String(codeStr || '').replace(/\D/g, '').slice(0, 6);
+  const boxes = getOtpBoxes();
+  boxes.forEach((b, idx) => {
+    b.value = digits[idx] || '';
+  });
+  const lastIdx = Math.min(5, Math.max(0, digits.length - 1));
+  if (boxes[lastIdx]) boxes[lastIdx].focus();
+}
+
+function getEnteredOtpCode() {
+  return getOtpBoxes().map(b => (b.value || '').trim()).join('');
+}
+
+function showOtpVerificationStep({ email, purpose, cooldownSeconds = 60, deliveredByEmail = false, fallbackCode = '' }) {
+  const formGate = document.getElementById('form-auth-gate');
+  const formOtp = document.getElementById('form-auth-otp');
+  const titleEl = document.getElementById('auth-gate-title');
+  const badgeEl = document.getElementById('otp-badge-label');
+  const emailDisplay = document.getElementById('otp-email-display');
+  const targetEmailInput = document.getElementById('otp-target-email');
+  const purposeInput = document.getElementById('otp-purpose');
+  const fallbackBox = document.getElementById('otp-fallback-box');
+  const otpFeedback = document.getElementById('otp-feedback');
+
+  if (formGate) formGate.style.display = 'none';
+  if (formOtp) formOtp.style.display = 'flex';
+  if (titleEl) titleEl.textContent = 'Verifique seu código';
+  if (targetEmailInput) targetEmailInput.value = email || '';
+  if (purposeInput) purposeInput.value = purpose || 'login';
+  if (emailDisplay) emailDisplay.textContent = email || '';
+  if (badgeEl) {
+    badgeEl.textContent = purpose === 'register'
+      ? 'Ativação de Conta (OTP)'
+      : 'Autenticação em 2 Etapas (2FA)';
+  }
+  if (otpFeedback) otpFeedback.style.display = 'none';
+
+  if (fallbackBox) {
+    if (!deliveredByEmail && fallbackCode) {
+      fallbackBox.style.display = 'block';
+      fallbackBox.innerHTML = `
+        <div>Código OTP gerado para <b>${email}</b>:</div>
+        <div style="font-size:20px; font-weight:800; letter-spacing:0.22em; color:#34d399; margin:4px 0;">${fallbackCode}</div>
+        <button type="button" id="btn-autofill-otp-demo" class="auth-gate-link" style="color:#34d399; font-size:11.5px;">
+          Preencher código automaticamente
+        </button>
+      `;
+      const autoBtn = document.getElementById('btn-autofill-otp-demo');
+      if (autoBtn) {
+        autoBtn.onclick = () => fillOtpBoxesWithCode(fallbackCode);
+      }
+    } else {
+      fallbackBox.style.display = 'none';
+      fallbackBox.innerHTML = '';
+    }
+  }
+
+  clearAndFocusOtpBoxes();
+  startOtpCooldownTimer(cooldownSeconds || 60);
+}
+
 function setAuthGateMode(mode) {
   const isReg = mode === 'register';
+  const formGate = document.getElementById('form-auth-gate');
+  const formOtp = document.getElementById('form-auth-otp');
   const modeInput = document.getElementById('gate-mode');
   const titleEl = document.getElementById('auth-gate-title');
   const nameWrap = document.getElementById('gate-name-wrap');
@@ -4625,6 +4729,8 @@ function setAuthGateMode(mode) {
   const inlineSwitch = document.getElementById('gate-switch-inline');
   const feedback = document.getElementById('gate-feedback');
 
+  if (formGate) formGate.style.display = 'flex';
+  if (formOtp) formOtp.style.display = 'none';
   if (modeInput) modeInput.value = isReg ? 'register' : 'login';
   if (titleEl) titleEl.textContent = isReg ? 'Crie sua conta' : 'Acesse sua conta';
   if (nameWrap) nameWrap.style.display = isReg ? 'flex' : 'none';
@@ -4763,9 +4869,9 @@ function bindAuthEvents() {
       const name = document.getElementById('gate-name')?.value?.trim() || state.profile.name || 'Minha Conta';
       const email = document.getElementById('gate-email')?.value?.trim() || '';
       const password = document.getElementById('gate-password')?.value || '';
-      const remember = Boolean(document.getElementById('gate-remember')?.checked);
+      pendingOtpRemember = Boolean(document.getElementById('gate-remember')?.checked);
 
-      showGateMsg(action === 'register' ? 'Criando sua conta na nuvem...' : 'Autenticando sua conta...', false);
+      showGateMsg(action === 'register' ? 'Gerando código de verificação de cadastro...' : 'Validando credenciais e gerando código 2FA...', false);
 
       try {
         const res = await fetch('/api/auth', {
@@ -4778,10 +4884,132 @@ function bindAuthEvents() {
           showGateMsg(data.error || 'Não foi possível autenticar.', true);
           return;
         }
-        applyAuthenticatedUser(data.user, data.state, remember);
-        showUndoToast(`Bem-vindo(a), ${data.user.name}! Conta sincronizada na nuvem.`);
+        if (data.step === 'verify_otp') {
+          showOtpVerificationStep(data);
+          return;
+        }
+        if (data.user) {
+          applyAuthenticatedUser(data.user, data.state, pendingOtpRemember);
+          showUndoToast(`Bem-vindo(a), ${data.user.name}! Conta sincronizada na nuvem.`);
+        }
       } catch {
         showGateMsg('Erro de conexão com o servidor.', true);
+      }
+    });
+  }
+
+  // Navegação inteligente das 6 caixas de dígitos OTP (auto-advance, backspace e colar)
+  const otpBoxes = getOtpBoxes();
+  otpBoxes.forEach((box, idx) => {
+    box.addEventListener('input', (e) => {
+      const val = (e.target.value || '').replace(/\D/g, '');
+      e.target.value = val.slice(-1);
+      if (e.target.value && idx < otpBoxes.length - 1) {
+        otpBoxes[idx + 1].focus();
+        otpBoxes[idx + 1].select();
+      }
+    });
+
+    box.addEventListener('keydown', (e) => {
+      if (e.key === 'Backspace' && !box.value && idx > 0) {
+        otpBoxes[idx - 1].focus();
+        otpBoxes[idx - 1].value = '';
+      }
+    });
+
+    box.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const pasted = (e.clipboardData || window.clipboardData).getData('text');
+      fillOtpBoxesWithCode(pasted);
+    });
+  });
+
+  const backOtpBtn = document.getElementById('btn-gate-otp-back');
+  if (backOtpBtn) {
+    backOtpBtn.addEventListener('click', () => {
+      const curMode = document.getElementById('gate-mode')?.value || 'login';
+      setAuthGateMode(curMode);
+    });
+  }
+
+  const resendOtpBtn = document.getElementById('btn-gate-resend-otp');
+  if (resendOtpBtn) {
+    resendOtpBtn.addEventListener('click', async () => {
+      const email = document.getElementById('otp-target-email')?.value || '';
+      const otpFeedback = document.getElementById('otp-feedback');
+      const showOtpMsg = (msg, isErr = false) => {
+        if (!otpFeedback) return;
+        otpFeedback.style.display = 'block';
+        otpFeedback.style.background = isErr ? 'var(--coral-soft)' : 'var(--green-soft)';
+        otpFeedback.style.color = isErr ? 'var(--coral-red)' : 'var(--green-emerald)';
+        otpFeedback.textContent = msg;
+      };
+      if (!email) return;
+      showOtpMsg('Enviando novo código de 6 dígitos...', false);
+      try {
+        const res = await fetch('/api/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'resend_otp', email })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          if (data.remainingCooldown) startOtpCooldownTimer(data.remainingCooldown);
+          showOtpMsg(data.error || 'Aguarde antes de reenviar.', true);
+          return;
+        }
+        showOtpVerificationStep(data);
+        showOtpMsg('Novo código de 6 dígitos enviado! O anterior foi invalidado.', false);
+      } catch {
+        showOtpMsg('Erro ao reenviar código.', true);
+      }
+    });
+  }
+
+  const formOtp = document.getElementById('form-auth-otp');
+  if (formOtp) {
+    formOtp.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('otp-target-email')?.value || '';
+      const code = getEnteredOtpCode();
+      const otpFeedback = document.getElementById('otp-feedback');
+      const showOtpMsg = (msg, isErr = false) => {
+        if (!otpFeedback) return;
+        otpFeedback.style.display = 'block';
+        otpFeedback.style.background = isErr ? 'var(--coral-soft)' : 'var(--green-soft)';
+        otpFeedback.style.color = isErr ? 'var(--coral-red)' : 'var(--green-emerald)';
+        otpFeedback.textContent = msg;
+      };
+
+      if (code.length !== 6) {
+        showOtpMsg('Preencha todos os 6 dígitos do código.', true);
+        return;
+      }
+
+      showOtpMsg('Verificando código de segurança...', false);
+      try {
+        const res = await fetch('/api/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'verify_otp', email, code, state })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          showOtpMsg(data.error || 'Código inválido.', true);
+          if (data.locked || data.expired) {
+            clearAndFocusOtpBoxes();
+          }
+          return;
+        }
+
+        if (otpCooldownInterval) {
+          clearInterval(otpCooldownInterval);
+          otpCooldownInterval = null;
+        }
+        applyAuthenticatedUser(data.user, data.state, pendingOtpRemember);
+        showUndoToast(`Código verificado! Bem-vindo(a), ${data.user.name}.`);
+      } catch {
+        showOtpMsg('Erro de rede ao validar o código.', true);
       }
     });
   }
@@ -4859,6 +5087,13 @@ function bindAuthEvents() {
         const data = await res.json();
         if (!res.ok || !data.ok) {
           showMsg(data.error || 'Não foi possível autenticar.', true);
+          return;
+        }
+
+        if (data.step === 'verify_otp') {
+          document.getElementById('modal-auth')?.classList.remove('open');
+          setAuthGateVisibility(true);
+          showOtpVerificationStep(data);
           return;
         }
 

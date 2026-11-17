@@ -66,6 +66,48 @@ export const FAROL_SHELL_HTML = `<!-- ==================== TELA INICIAL DE LOGIN
             </button>
           </div>
         </form>
+
+        <!-- Etapa 2: Verificação de Código OTP de 6 Dígitos (Cadastro & Login 2FA) -->
+        <form id="form-auth-otp" class="auth-gate-form" style="display:none;">
+          <input type="hidden" id="otp-target-email" value="" />
+          <input type="hidden" id="otp-purpose" value="login" />
+
+          <div class="otp-step-header">
+            <span class="otp-badge-pill" id="otp-badge-label">Verificação em 2 Etapas (2FA)</span>
+            <p class="otp-step-desc" id="otp-step-desc">
+              Digite o código de 6 dígitos enviado para <b id="otp-email-display">seu@email.com</b>
+            </p>
+          </div>
+
+          <div id="otp-fallback-box" class="otp-fallback-box" style="display:none;"></div>
+
+          <div class="otp-digits-row" id="otp-digits-row">
+            <input type="text" inputmode="numeric" maxlength="1" class="otp-digit-box" data-otp-idx="0" autocomplete="one-time-code" aria-label="Dígito 1" />
+            <input type="text" inputmode="numeric" maxlength="1" class="otp-digit-box" data-otp-idx="1" aria-label="Dígito 2" />
+            <input type="text" inputmode="numeric" maxlength="1" class="otp-digit-box" data-otp-idx="2" aria-label="Dígito 3" />
+            <input type="text" inputmode="numeric" maxlength="1" class="otp-digit-box" data-otp-idx="3" aria-label="Dígito 4" />
+            <input type="text" inputmode="numeric" maxlength="1" class="otp-digit-box" data-otp-idx="4" aria-label="Dígito 5" />
+            <input type="text" inputmode="numeric" maxlength="1" class="otp-digit-box" data-otp-idx="5" aria-label="Dígito 6" />
+          </div>
+
+          <div class="otp-timer-row">
+            <span style="font-size:11.5px; color:var(--text-muted);">Expira em 10 min · Máx. 3 tentativas</span>
+            <button type="button" class="auth-gate-link" id="btn-gate-resend-otp" disabled>
+              Reenviar código (60s)
+            </button>
+          </div>
+
+          <div id="otp-feedback" class="auth-gate-feedback" style="display:none;"></div>
+
+          <div class="auth-gate-submit-wrap" style="flex-direction:column; gap:10px; align-items:center;">
+            <button type="submit" class="auth-gate-submit-btn" id="btn-gate-verify-otp" style="width:100%;">
+              ✓ VALIDAR CÓDIGO E ACESSAR
+            </button>
+            <button type="button" class="auth-gate-link" id="btn-gate-otp-back" style="font-size:12px;">
+              ← Voltar e alterar e-mail ou senha
+            </button>
+          </div>
+        </form>
       </div>
 
       <!-- Painel Direito (Hero com Ondas Fluídas na Paleta Farol, fiel à referência) -->

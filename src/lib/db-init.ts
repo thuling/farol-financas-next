@@ -11,13 +11,37 @@ export async function ensureDbSchema(prisma: PrismaClient): Promise<void> {
         "email" TEXT NOT NULL,
         "name" TEXT NOT NULL,
         "passwordHash" TEXT NOT NULL,
+        "verified" BOOLEAN NOT NULL DEFAULT false,
         "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT "UserAccount_pkey" PRIMARY KEY ("id")
       );
     `);
     await prisma.$executeRawUnsafe(`
+      ALTER TABLE "UserAccount" ADD COLUMN IF NOT EXISTS "verified" BOOLEAN NOT NULL DEFAULT false;
+    `);
+    await prisma.$executeRawUnsafe(`
       CREATE UNIQUE INDEX IF NOT EXISTS "UserAccount_email_key" ON "UserAccount"("email");
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "OtpVerification" (
+        "id" TEXT NOT NULL,
+        "userId" TEXT NOT NULL,
+        "email" TEXT NOT NULL,
+        "purpose" TEXT NOT NULL DEFAULT 'login',
+        "codeHash" TEXT NOT NULL,
+        "attempts" INTEGER NOT NULL DEFAULT 0,
+        "used" BOOLEAN NOT NULL DEFAULT false,
+        "expiresAt" TIMESTAMP(3) NOT NULL,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "OtpVerification_pkey" PRIMARY KEY ("id")
+      );
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "OtpVerification_email_used_idx" ON "OtpVerification"("email", "used");
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "OtpVerification_userId_used_idx" ON "OtpVerification"("userId", "used");
     `);
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "UserWorkspace" (
