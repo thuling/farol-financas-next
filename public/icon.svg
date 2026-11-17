@@ -1,17 +1,37 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#56c2f6"/>
-      <stop offset="100%" stop-color="#1d4ed8"/>
+    <linearGradient id="farol-bg" x1="48" y1="24" x2="464" y2="488" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="52%" stop-color="#0d6efd" />
+      <stop offset="100%" stop-color="#0747b6" />
+    </linearGradient>
+    <linearGradient id="farol-beam-l" x1="190" y1="244" x2="54" y2="244" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.34" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+    </linearGradient>
+    <linearGradient id="farol-beam-r" x1="322" y1="244" x2="458" y2="244" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.34" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
     </linearGradient>
   </defs>
-  <rect width="512" height="512" rx="120" fill="url(#bg)"/>
-  <g fill="none" stroke="#ffffff" stroke-width="34" stroke-linecap="round" stroke-linejoin="round" transform="translate(96, 88) scale(13.33)">
-    <path d="M9 18h6"/>
-    <path d="M10 22h4"/>
-    <path d="M12 2v2"/>
-    <path d="M12 8a4 4 0 0 0-4 4v2h8v-2a4 4 0 0 0-4-4Z"/>
-    <path d="m4.93 4.93 1.41 1.41"/>
-    <path d="m17.66 6.34 1.41-1.41"/>
-  </g>
+
+  <rect width="512" height="512" rx="124" fill="url(#farol-bg)" />
+  <rect x="10" y="10" width="492" height="492" rx="115" stroke="#ffffff" stroke-opacity="0.24" stroke-width="8" />
+
+  <!-- Subtle Lighthouse Light Beams -->
+  <path d="M56 184 L192 220 V272 L56 308 Z" fill="url(#farol-beam-l)" />
+  <path d="M456 184 L320 220 V272 L456 308 Z" fill="url(#farol-beam-r)" />
+
+  <!-- Radiating Top Beacon Rays -->
+  <path d="M256 80 V118" stroke="#ffffff" stroke-width="30" stroke-linecap="round" />
+  <path d="M134 134 L164 164" stroke="#ffffff" stroke-width="30" stroke-linecap="round" />
+  <path d="M378 134 L348 164" stroke="#ffffff" stroke-width="30" stroke-linecap="round" />
+
+  <!-- Farol Beacon Dome & Clean Cutout Window -->
+  <path d="M174 322 V238 C174 192.713 210.713 156 256 156 C301.287 156 338 192.713 338 238 V322 H174 Z" fill="#ffffff" />
+  <rect x="234" y="216" width="44" height="66" rx="22" fill="#0d6efd" />
+
+  <!-- Base Pedestals -->
+  <rect x="144" y="346" width="224" height="32" rx="16" fill="#ffffff" />
+  <rect x="178" y="398" width="156" height="30" rx="15" fill="#ffffff" fill-opacity="0.92" />
 </svg>

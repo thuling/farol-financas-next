@@ -10,8 +10,8 @@ export const FAROL_SHELL_HTML = `<!-- ==================== TELA INICIAL DE LOGIN
     <header class="auth-gate-topbar">
       <div class="auth-topbar-pill">
         <div class="auth-gate-brand-mini">
-          <div class="brand-logo">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <div class="brand-logo" aria-hidden="true">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2v2"/><path d="M12 8a4 4 0 0 0-4 4v2h8v-2a4 4 0 0 0-4-4Z"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 6.34 1.41-1.41"/>
             </svg>
           </div>
@@ -200,8 +200,8 @@ export const FAROL_SHELL_HTML = `<!-- ==================== TELA INICIAL DE LOGIN
     <aside class="sidebar">
       <div class="sidebar-top-group">
         <div class="brand">
-          <div class="brand-logo" title="Farol Finanças">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <div class="brand-logo" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M9 18h6"/>
               <path d="M10 22h4"/>
               <path d="M12 2v2"/>
