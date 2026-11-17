@@ -112,12 +112,13 @@ Retorne um objeto JSON com a propriedade "items", onde cada item possui "merchan
       return NextResponse.json({ ok: true, mappings });
     }
 
-    // MODO 2: Extração Multimodal OCR de Fatura em PDF ou Imagem (.pdf, .png, .jpg, .webp)
+    // MODO 2: Extração Multimodal OCR de Fatura em PDF, Imagem ou Texto/Markdown (.pdf, .png, .jpg, .webp, .md)
     const fileDataBase64 = String(body.fileDataBase64 || '');
+    const rawTextContent = String(body.rawText || '');
     const mimeType = String(body.mimeType || 'application/pdf');
     const defaultYear = String(body.defaultYear || new Date().getFullYear());
 
-    if (!fileDataBase64) {
+    if (!fileDataBase64 && !rawTextContent) {
       return NextResponse.json(
         { ok: false, error: 'Arquivo vazio ou não enviado.' },
         { status: 400 }
@@ -125,17 +126,23 @@ Retorne um objeto JSON com a propriedade "items", onde cada item possui "merchan
     }
 
     const isPdf = mimeType === 'application/pdf';
-    const mediaBlock = isPdf
+    const isTextMd = Boolean(rawTextContent) || mimeType === 'text/markdown' || mimeType === 'text/plain';
+    const mediaBlock = isTextMd
       ? {
-          type: 'document',
-          data: fileDataBase64,
-          mime_type: 'application/pdf',
+          type: 'text',
+          text: `Conteúdo da fatura em Markdown/Texto:\n\n${rawTextContent || Buffer.from(fileDataBase64, 'base64').toString('utf8')}`,
         }
-      : {
-          type: 'image',
-          data: fileDataBase64,
-          mime_type: mimeType,
-        };
+      : isPdf
+        ? {
+            type: 'document',
+            data: fileDataBase64,
+            mime_type: 'application/pdf',
+          }
+        : {
+            type: 'image',
+            data: fileDataBase64,
+            mime_type: mimeType,
+          };
 
     const extractionPrompt = `Você é um extrator contábil de alta precisão para faturas de cartão de crédito brasileiras (Nubank, Mercado Pago, Itaú, Inter, C6, Bradesco, Santander).
 Analise o documento/imagem da fatura em anexo e extraia TODOS os lançamentos individuais (compras à vista, compras parceladas, estornos/créditos e pagamentos recebidos).

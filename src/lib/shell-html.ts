@@ -1233,8 +1233,8 @@ export const FAROL_SHELL_HTML = `<!-- ==================== TELA INICIAL DE LOGIN
             </svg>
           </div>
           <div class="modal-header-text">
-            <h3 class="modal-title">Importar Fatura ou Extrato (CSV, PDF ou Imagem)</h3>
-            <p class="modal-subtitle">Extração inteligente de parcelas (X/Y), estornos, pagamentos e revisão editável antes de salvar</p>
+            <h3 class="modal-title">Importar Fatura ou Extrato (CSV, MD, PDF ou Imagem)</h3>
+            <p class="modal-subtitle">Leitura completa de Markdown (.md), CSV, PDF e imagens com extração de parcelas (X/Y), estornos e revisão editável</p>
           </div>
         </div>
         <button type="button" class="modal-close-btn" data-close-modal="modal-import-invoice" aria-label="Fechar">✕</button>
@@ -1243,9 +1243,9 @@ export const FAROL_SHELL_HTML = `<!-- ==================== TELA INICIAL DE LOGIN
       <div class="modal-body" style="gap:14px;">
         <div class="form-row-2">
           <div class="form-group">
-            <label class="form-label">Arquivo da fatura (.csv, .pdf, .png, .jpg)</label>
+            <label class="form-label">Arquivo da fatura (.csv, .md, .pdf, .png, .jpg)</label>
             <div class="field-box" style="padding:6px 10px;">
-              <input type="file" id="imp-file-input" accept=".csv,.pdf,.png,.jpg,.jpeg,.webp,.ofx" class="form-input" style="font-size:12.5px;" />
+              <input type="file" id="imp-file-input" accept=".csv,.md,.markdown,.pdf,.png,.jpg,.jpeg,.webp,.ofx,.txt" class="form-input" style="font-size:12.5px;" />
             </div>
           </div>
 
@@ -1267,13 +1267,25 @@ export const FAROL_SHELL_HTML = `<!-- ==================== TELA INICIAL DE LOGIN
           </label>
 
           <div class="form-group" id="imp-api-key-wrap">
-            <label class="form-label">Chave Gemini API (opcional p/ CSV · usada em PDF/Foto e IA)</label>
+            <label class="form-label">Chave Gemini API (opcional p/ CSV/MD · usada em PDF/Foto)</label>
             <div class="field-box" style="height:38px;">
               <span class="field-prefix">🔑</span>
               <input type="password" id="imp-gemini-key" class="form-input" placeholder="Cole sua GEMINI_API_KEY (salva no navegador)" style="font-size:12px;" />
             </div>
           </div>
         </div>
+
+        <details class="quick-more-details" id="imp-md-paste-details">
+          <summary>Ou colar conteúdo Markdown (.md) / texto da fatura diretamente</summary>
+          <div style="display:flex; flex-direction:column; gap:8px; margin-top:8px;">
+            <textarea id="imp-md-textarea" class="form-input" rows="4" placeholder="Ex:&#10;| Data | Descrição | Valor |&#10;| --- | --- | --- |&#10;| 12/11/2026 | Mercado Livre - Parcela 2/10 | R$ 149,90 |" style="resize:vertical; font-family:monospace; font-size:12px; padding:10px;"></textarea>
+            <div style="display:flex; justify-content:flex-end;">
+              <button type="button" class="btn-secondary" id="btn-imp-parse-md-text" style="padding:6px 14px; font-size:12px;">
+                Analisar Markdown Colado
+              </button>
+            </div>
+          </div>
+        </details>
 
         <div id="imp-status-banner" style="display:none; padding:10px 14px; border-radius:10px; font-size:12.5px; font-weight:500;"></div>
 
@@ -1306,7 +1318,7 @@ export const FAROL_SHELL_HTML = `<!-- ==================== TELA INICIAL DE LOGIN
       </div>
 
       <div class="modal-footer">
-        <span id="imp-footer-hint" style="font-size:11.5px; color:var(--text-muted);">CSV é processado 100% localmente sem custo de API.</span>
+        <span id="imp-footer-hint" style="font-size:11.5px; color:var(--text-muted);">CSV e Markdown (.md) são processados localmente sem custo de API.</span>
         <div class="modal-footer-right">
           <button type="button" class="btn-secondary" data-close-modal="modal-import-invoice">Cancelar</button>
           <button type="button" class="btn-primary" id="btn-confirm-import-invoice" disabled>Confirmar e Lançar Fatura</button>

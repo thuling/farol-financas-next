@@ -1359,8 +1359,8 @@ function renderTransacoesView() {
           <p class="vs-prev">Combine período, categoria, conta, tag ou texto e edite várias transações em lote.</p>
         </div>
         <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-          <button class="btn-secondary" id="btn-import-statement" title="Importar fatura ou extrato em CSV, PDF ou Imagem com revisão inteligente">
-            ↑ Importar Fatura (CSV/PDF/Foto)
+          <button class="btn-secondary" id="btn-import-statement" title="Importar fatura ou extrato em CSV, Markdown (.md), PDF ou Imagem">
+            ↑ Importar Fatura (CSV/MD/PDF/Foto)
           </button>
           <button class="btn-primary" id="btn-new-tx-page">+ Lançamento Rápido</button>
         </div>
@@ -1620,6 +1620,315 @@ function parseInvoiceCSVOrOFXLocally(rawText, fileName = '') {
       matchedByRule: cls.matchedByRule
     });
   }
+  return out;
+}
+
+const PT_MONTH_MAP = {
+  jan: '01', janeiro: '01',
+  fev: '02', fevereiro: '02',
+  mar: '03', marco: '03', 'março': '03',
+  abr: '04', abril: '04',
+  mai: '05', maio: '05',
+  jun: '06', junho: '06',
+  jul: '07', julho: '07',
+  ago: '08', agosto: '08',
+  set: '09', setembro: '09',
+  out: '10', outubro: '10',
+  nov: '11', novembro: '11',
+  dez: '12', dezembro: '12'
+};
+
+function stripMarkdownFormatting(str) {
+  return String(str || '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/[*_`~]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeTextAccents(str) {
+  return String(str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
+function findCategoryByExplicitName(rawCatName) {
+  const norm = normalizeTextAccents(stripMarkdownFormatting(rawCatName));
+  if (!norm || norm === '-' || norm === 'outros') return null;
+  const exact = state.categories.find(c => !c.archived && normalizeTextAccents(c.name) === norm);
+  if (exact) return exact.id;
+  const partial = state.categories.find(c => !c.archived && (normalizeTextAccents(c.name).includes(norm) || norm.includes(normalizeTextAccents(c.name))));
+  return partial ? partial.id : null;
+}
+
+function parseFlexibleDateBR(rawStr, fallbackYM) {
+  const clean = stripMarkdownFormatting(rawStr);
+  const [fbYear, fbMonth] = (fallbackYM || '2026-11').split('-');
+
+  // 1. AAAA-MM-DD ou AAAA/MM/DD
+  const iso = clean.match(/(\d{4})[-/](\d{2})[-/](\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+  // 2. DD/MM/AAAA ou DD-MM-AAAA
+  const brFull = clean.match(/(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})/);
+  if (brFull) {
+    const dd = brFull[1].padStart(2, '0');
+    const mm = brFull[2].padStart(2, '0');
+    const yyyy = brFull[3].length === 2 ? `20${brFull[3]}` : brFull[3];
+    if (Number(mm) >= 1 && Number(mm) <= 12 && Number(dd) >= 1 && Number(dd) <= 31) {
+      return `${yyyy}-${mm}-${dd}`;
+    }
+  }
+
+  // 3. "12 de novembro" / "12 nov" / "12 NOV 2026"
+  const ptDate = normalizeTextAccents(clean).match(/(\d{1,2})\s*(?:de\s+)?([a-z]+)(?:\s*(?:de\s+)?(\d{4}))?/);
+  if (ptDate && PT_MONTH_MAP[ptDate[2]]) {
+    const dd = ptDate[1].padStart(2, '0');
+    const mm = PT_MONTH_MAP[ptDate[2]];
+    const yyyy = ptDate[3] || fbYear;
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  // 4. DD/MM (cuidado para não confundir com parcela X/Y se dia > 31 ou mes > 12)
+  const dm = clean.match(/\b(\d{1,2})\/(\d{1,2})\b/);
+  if (dm) {
+    const dNum = Number(dm[1]);
+    const mNum = Number(dm[2]);
+    if (dNum >= 1 && dNum <= 31 && mNum >= 1 && mNum <= 12) {
+      return `${fbYear}-${String(mNum).padStart(2, '0')}-${String(dNum).padStart(2, '0')}`;
+    }
+  }
+
+  return null;
+}
+
+function isSummaryOrTotalLine(text) {
+  const norm = normalizeTextAccents(text);
+  return /^(total\b|subtotal\b|valor total|total da fatura|total de compras|limite\s+(total|disponivel)|saldo\s+(anterior|atual)|resumo\s+da\s+fatura|melhor\s+dia|fechamento|vencimento)/.test(norm);
+}
+
+function parseInvoiceMarkdownLocally(rawText) {
+  const lines = String(rawText || '').split(/\r?\n/);
+  const defaultYM = state.selectedMonth || getTodayISO().slice(0, 7);
+  let contextYM = defaultYM;
+  let contextDate = null;
+  let sectionForcedKind = null; // 'refund' | 'payment' | null
+  const out = [];
+
+  // 1. Detecta ano/mês no cabeçalho global (ex: "# Fatura Novembro 2026" ou "Fatura 11/2026")
+  for (let k = 0; k < Math.min(20, lines.length); k++) {
+    const normL = normalizeTextAccents(lines[k]);
+    const ymHeading = normL.match(/([a-z]+)\s*(?:de\s+|\/)?\s*(20\d{2})/);
+    if (ymHeading && PT_MONTH_MAP[ymHeading[1]]) {
+      contextYM = `${ymHeading[2]}-${PT_MONTH_MAP[ymHeading[1]]}`;
+      break;
+    }
+    const numYM = normL.match(/\b(0?[1-9]|1[0-2])\/(20\d{2})\b/);
+    if (numYM) {
+      contextYM = `${numYM[2]}-${String(numYM[1]).padStart(2, '0')}`;
+      break;
+    }
+  }
+
+  let tableCols = null; // mapeamento de colunas de tabela Markdown ativa
+
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i];
+    const trimmed = rawLine.trim();
+    if (!trimmed) {
+      tableCols = null;
+      continue;
+    }
+
+    // Cabeçalhos Markdown (#, ##, ###) podem definir data, seção (Estornos / Pagamentos) ou resetar tabela
+    if (/^#{1,6}\s+/.test(trimmed)) {
+      tableCols = null;
+      const headingText = stripMarkdownFormatting(trimmed.replace(/^#{1,6}\s+/, ''));
+      const normHead = normalizeTextAccents(headingText);
+
+      if (/\b(estorno|reembolso|credito|desconto)\b/.test(normHead)) {
+        sectionForcedKind = 'refund';
+      } else if (/\bpagamento/.test(normHead)) {
+        sectionForcedKind = 'payment';
+      } else if (/\b(compra|lancamento|despesa|itens|fatura|gasto)/.test(normHead)) {
+        sectionForcedKind = null;
+      }
+
+      const hDate = parseFlexibleDateBR(headingText, contextYM);
+      if (hDate) contextDate = hDate;
+      continue;
+    }
+
+    // Detecta linha de tabela Markdown (`| col1 | col2 | ... |`)
+    if (trimmed.startsWith('|') || (trimmed.split('|').length >= 3 && !/^[-*+]\s/.test(trimmed))) {
+      const rawCells = trimmed
+        .replace(/^\|/, '')
+        .replace(/\|$/, '')
+        .split('|')
+        .map(c => stripMarkdownFormatting(c));
+
+      // Ignora linha separadora `| --- | :---: |`
+      if (rawCells.every(c => /^:?-{2,}:?$/.test(c.replace(/\s/g, '')) || c === '')) {
+        continue;
+      }
+
+      // Verifica se é cabeçalho da tabela
+      const normCells = rawCells.map(c => normalizeTextAccents(c));
+      const looksLikeHeader = normCells.some(c => /^(data|date|dt)$/.test(c)) ||
+        (normCells.some(c => /descri|estabelecimento|title|loja|item|nome|historico/.test(c)) &&
+         normCells.some(c => /valor|amount|preco|total/.test(c)));
+
+      if (looksLikeHeader) {
+        tableCols = {
+          dateIdx: normCells.findIndex(c => /data|date|dt/.test(c)),
+          titleIdx: normCells.findIndex(c => /descri|estabelecimento|title|loja|item|nome|historico/.test(c)),
+          instIdx: normCells.findIndex(c => /parcela|prestacao/.test(c)),
+          catIdx: normCells.findIndex(c => /categ/.test(c)),
+          typeIdx: normCells.findIndex(c => /^tipo$|classifica/.test(c)),
+          amtIdx: normCells.findIndex(c => /valor|amount|preco|total/.test(c))
+        };
+        continue;
+      }
+
+      // Linha de dados da tabela
+      let cellDate = tableCols && tableCols.dateIdx >= 0 ? rawCells[tableCols.dateIdx] : '';
+      let cellTitle = tableCols && tableCols.titleIdx >= 0 ? rawCells[tableCols.titleIdx] : '';
+      const cellInst = tableCols && tableCols.instIdx >= 0 ? rawCells[tableCols.instIdx] : '';
+      const cellCat = tableCols && tableCols.catIdx >= 0 ? rawCells[tableCols.catIdx] : '';
+      const cellType = tableCols && tableCols.typeIdx >= 0 ? rawCells[tableCols.typeIdx] : '';
+      let cellAmt = tableCols && tableCols.amtIdx >= 0 ? rawCells[tableCols.amtIdx] : '';
+
+      // Se tabela não tinha cabeçalho explícito, infere colunas pelo conteúdo
+      if (!tableCols) {
+        for (const c of rawCells) {
+          if (!cellDate && parseFlexibleDateBR(c, contextYM)) { cellDate = c; continue; }
+          if (!cellAmt && /[+-]?\s*(?:R\$\s*)?\d[\d.]*,\d{2}/.test(c)) { cellAmt = c; continue; }
+          if (!cellTitle && c.length > 1 && !/^\d+\/\d+$/.test(c)) { cellTitle = c; }
+        }
+        if (!cellAmt) cellAmt = rawCells[rawCells.length - 1] || '';
+      }
+
+      if (!cellTitle || isSummaryOrTotalLine(cellTitle)) continue;
+      const amtMatch = cellAmt.match(/[+-]?\s*(?:R\$\s*)?[\d.]+\s*,\s*\d{2}|[+-]?\s*(?:R\$\s*)?\d+(?:\.\d{2})?/);
+      const valFloat = cleanBrazilianAmountToFloat(amtMatch ? amtMatch[0] : cellAmt);
+      if (isNaN(valFloat) || valFloat === 0) continue;
+
+      const parsedDate = parseFlexibleDateBR(cellDate, contextYM) || contextDate || `${contextYM}-10`;
+      const inst = extractInstallmentInfoFromTitle(cellTitle);
+
+      // Se houver coluna Parcela explícita (ex: "2/10" ou "3 de 6")
+      if (cellInst && inst.totalInstallments === 1) {
+        const instColMatch = cellInst.match(/(\d{1,2})\s*(?:\/|de)\s*(\d{1,2})/i);
+        if (instColMatch) {
+          inst.currentInstallment = Math.max(1, parseInt(instColMatch[1], 10) || 1);
+          inst.totalInstallments = Math.max(inst.currentInstallment, parseInt(instColMatch[2], 10) || 1);
+        }
+      }
+
+      let entryKind = sectionForcedKind || detectEntryKind(cellTitle + ' ' + cellType, valFloat, true);
+      if (/estorno|reembolso/i.test(cellType)) entryKind = 'refund';
+      if (/pagamento/i.test(cellType)) entryKind = 'payment';
+
+      const explicitCatId = cellCat ? findCategoryByExplicitName(cellCat) : null;
+      const cls = classifyMerchantLocally(inst.cleanTitle);
+
+      out.push({
+        id: 'md-' + i,
+        include: entryKind !== 'payment',
+        date: parsedDate,
+        cleanTitle: inst.cleanTitle,
+        currentInstallment: inst.currentInstallment,
+        totalInstallments: inst.totalInstallments,
+        amount: Math.abs(valFloat),
+        entryKind,
+        categoryId: explicitCatId || cls.categoryId,
+        matchedByRule: Boolean(explicitCatId) || cls.matchedByRule
+      });
+      continue;
+    }
+
+    // Listas com marcadores (-, *, 1., - [ ]) ou linhas livres de lançamento
+    tableCols = null;
+    let lineBody = trimmed
+      .replace(/^[-*+]\s+\[[ xX]\]\s+/, '')
+      .replace(/^[-*+]\s+/, '')
+      .replace(/^\d+[.)]\s+/, '');
+    lineBody = stripMarkdownFormatting(lineBody);
+
+    if (!lineBody || isSummaryOrTotalLine(lineBody)) continue;
+
+    // Bloco apenas de data (ex: "12 NOV" ou "12/11/2026") para herdar na linha seguinte
+    const standaloneDate = parseFlexibleDateBR(lineBody, contextYM);
+    if (standaloneDate && lineBody.length <= 22 && !/\d,\d{2}/.test(lineBody)) {
+      contextDate = standaloneDate;
+      continue;
+    }
+
+    // Extrai valor monetário da linha (ex: "- R$ 1.946,15", "R$ 243,75", "55,00")
+    const moneyMatches = [...lineBody.matchAll(/([+-]?\s*(?:R\$\s*)?\d{1,3}(?:\.\d{3})*,\d{2}|[+-]?\s*R\$\s*\d+,\d{2}|[+-]?\s*\d+\.\d{2}(?!\d))/gi)];
+    let pickedMoney = moneyMatches.length > 0 ? moneyMatches[moneyMatches.length - 1][0] : null;
+    let pickedLineDate = parseFlexibleDateBR(lineBody, contextYM);
+    let titleRemainder = lineBody;
+
+    // Suporte a bloco multi-linha (Estabelecimento na linha atual + Valor na linha seguinte)
+    if (!pickedMoney && i + 1 < lines.length) {
+      const nextClean = stripMarkdownFormatting(lines[i + 1].trim().replace(/^[-*+]\s+/, ''));
+      const nextMoneyMatch = nextClean.match(/^([+-]?\s*(?:R\$\s*)?\d{1,3}(?:\.\d{3})*,\d{2}|[+-]?\s*R\$\s*\d+,\d{2})$/i);
+      if (nextMoneyMatch && !isSummaryOrTotalLine(lineBody)) {
+        pickedMoney = nextMoneyMatch[0];
+        i += 1;
+      }
+    }
+
+    if (!pickedMoney) continue;
+    const valFloat = cleanBrazilianAmountToFloat(pickedMoney);
+    if (isNaN(valFloat) || valFloat === 0) continue;
+
+    // Remove o trecho do valor e o trecho da data para sobrar apenas o estabelecimento
+    titleRemainder = titleRemainder.replace(pickedMoney, ' ');
+    if (pickedLineDate) {
+      titleRemainder = titleRemainder
+        .replace(/\b\d{4}[-/]\d{2}[-/]\d{2}\b/, ' ')
+        .replace(/\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b/, ' ')
+        .replace(/\b\d{1,2}\/\d{1,2}\b/, ' ')
+        .replace(/\b\d{1,2}\s*(?:de\s+)?(?:jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[a-z]*(?:\s*(?:de\s+)?\d{4})?\b/i, ' ');
+    }
+
+    // Extrai categoria entre parênteses ou colchetes no fim (ex: "[Transporte]" ou "(Delivery)")
+    let explicitCatId = null;
+    const catTagMatch = titleRemainder.match(/(?:\(|\[)([A-Za-zÀ-ÿ\s/&]+)(?:\)|\])\s*$/);
+    if (catTagMatch && !/^\d+\/\d+$/.test(catTagMatch[1])) {
+      const foundCat = findCategoryByExplicitName(catTagMatch[1]);
+      if (foundCat) {
+        explicitCatId = foundCat;
+        titleRemainder = titleRemainder.slice(0, catTagMatch.index).trim();
+      }
+    }
+
+    titleRemainder = titleRemainder
+      .replace(/^[\s\-—–:|•]+/, '')
+      .replace(/[\s\-—–:|•]+$/, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!titleRemainder || isSummaryOrTotalLine(titleRemainder)) continue;
+
+    const inst = extractInstallmentInfoFromTitle(titleRemainder);
+    const entryKind = sectionForcedKind || detectEntryKind(titleRemainder, valFloat, true);
+    const cls = classifyMerchantLocally(inst.cleanTitle);
+
+    out.push({
+      id: 'md-' + i,
+      include: entryKind !== 'payment',
+      date: pickedLineDate || contextDate || `${contextYM}-10`,
+      cleanTitle: inst.cleanTitle,
+      currentInstallment: inst.currentInstallment,
+      totalInstallments: inst.totalInstallments,
+      amount: Math.abs(valFloat),
+      entryKind,
+      categoryId: explicitCatId || cls.categoryId,
+      matchedByRule: Boolean(explicitCatId) || cls.matchedByRule
+    });
+  }
+
   return out;
 }
 
@@ -1895,19 +2204,89 @@ function bindImportInvoiceModalEvents() {
       if (!file) return;
       const lowerName = file.name.toLowerCase();
 
-      // 1. Arquivos CSV ou OFX -> Parse 100% via código local (custo zero de IA)
-      if (lowerName.endsWith('.csv') || lowerName.endsWith('.ofx') || lowerName.endsWith('.txt')) {
+      // 1. Arquivos CSV, OFX ou Markdown (.md) -> Parse 100% via código local (custo zero de IA)
+      if (
+        lowerName.endsWith('.csv') ||
+        lowerName.endsWith('.ofx') ||
+        lowerName.endsWith('.md') ||
+        lowerName.endsWith('.markdown') ||
+        lowerName.endsWith('.txt')
+      ) {
+        const isMarkdown = lowerName.endsWith('.md') || lowerName.endsWith('.markdown');
         setImportStatusBanner(`Lendo "${file.name}" localmente...`, 'info');
         const reader = new FileReader();
-        reader.onload = () => {
-          const parsed = parseInvoiceCSVOrOFXLocally(String(reader.result || ''), file.name);
-          if (parsed.length === 0) {
-            setImportStatusBanner('Nenhum lançamento identificado no CSV. Verifique se o arquivo possui colunas date, title e amount.', 'error');
+        reader.onload = async () => {
+          const textContent = String(reader.result || '');
+          const parsed = isMarkdown
+            ? parseInvoiceMarkdownLocally(textContent)
+            : parseInvoiceCSVOrOFXLocally(textContent, file.name);
+
+          if (parsed.length > 0) {
+            invoiceReviewItems = parsed;
+            setImportStatusBanner(
+              `✓ ${parsed.length} lançamento(s) extraídos localmente de "${file.name}". Revise a tabela abaixo antes de confirmar.`,
+              'success'
+            );
+            renderInvoiceReviewTable();
             return;
           }
-          invoiceReviewItems = parsed;
-          setImportStatusBanner(`✓ ${parsed.length} lançamento(s) extraídos localmente de "${file.name}". Revise a tabela abaixo antes de confirmar.`, 'success');
-          renderInvoiceReviewTable();
+
+          // Fallback com IA para Markdown não-estruturado (caso o usuário tenha chave Gemini)
+          const apiKey = document.getElementById('imp-gemini-key')?.value?.trim() || '';
+          if (isMarkdown) {
+            setImportStatusBanner(`Markdown sem padrão tabular detectado — tentando interpretação inteligente em "${file.name}"...`, 'info');
+            try {
+              const defaultYear = (state.selectedMonth || '2026-11').split('-')[0];
+              const res = await fetch('/api/import-invoice', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  mode: 'extract',
+                  apiKey,
+                  rawText: textContent,
+                  mimeType: 'text/markdown',
+                  defaultYear,
+                  categories: state.categories.filter(c => !c.archived).map(c => ({ id: c.id, name: c.name }))
+                })
+              });
+              const data = await res.json();
+              if (res.ok && data.ok && Array.isArray(data.items) && data.items.length > 0) {
+                invoiceReviewItems = data.items.map((it, idx) => {
+                  const localCls = classifyMerchantLocally(it.cleanTitle);
+                  const validCatId = state.categories.some(c => c.id === it.suggestedCategoryId)
+                    ? it.suggestedCategoryId
+                    : localCls.categoryId;
+                  const kind = ['purchase', 'refund', 'payment'].includes(it.entryKind)
+                    ? it.entryKind
+                    : detectEntryKind(it.cleanTitle, Number(it.amount) || 0, true);
+                  return {
+                    id: 'md-ai-' + idx,
+                    include: kind !== 'payment',
+                    date: /^\d{4}-\d{2}-\d{2}/.test(it.date || '') ? it.date.slice(0, 10) : `${state.selectedMonth}-10`,
+                    cleanTitle: String(it.cleanTitle || `Item #${idx + 1}`).trim(),
+                    currentInstallment: Math.max(1, parseInt(it.currentInstallment, 10) || 1),
+                    totalInstallments: Math.max(1, parseInt(it.totalInstallments, 10) || 1),
+                    amount: Math.abs(Number(it.amount) || 0),
+                    entryKind: kind,
+                    categoryId: localCls.matchedByRule ? localCls.categoryId : validCatId,
+                    matchedByRule: true
+                  };
+                });
+                setImportStatusBanner(`✓ ${invoiceReviewItems.length} lançamento(s) interpretados do Markdown "${file.name}". Revise antes de salvar.`, 'success');
+                renderInvoiceReviewTable();
+                return;
+              }
+            } catch {
+              // Cai na mensagem amigável abaixo
+            }
+          }
+
+          setImportStatusBanner(
+            isMarkdown
+              ? 'Nenhum lançamento identificado no arquivo .md. Use tabelas Markdown (| Data | Descrição | Valor |) ou lista com datas e valores em R$.'
+              : 'Nenhum lançamento identificado no CSV. Verifique se o arquivo possui colunas date, title e amount.',
+            'error'
+          );
         };
         reader.readAsText(file);
         return;
@@ -1976,6 +2355,22 @@ function bindImportInvoiceModalEvents() {
         }
       };
       reader.readAsDataURL(file);
+    });
+  }
+
+  const parseMdTextBtn = document.getElementById('btn-imp-parse-md-text');
+  if (parseMdTextBtn) {
+    parseMdTextBtn.addEventListener('click', () => {
+      const mdArea = document.getElementById('imp-md-textarea');
+      const rawMd = mdArea ? mdArea.value : '';
+      const parsed = parseInvoiceMarkdownLocally(rawMd);
+      if (parsed.length === 0) {
+        setImportStatusBanner('Nenhum lançamento reconhecido no Markdown colado. Verifique se cada linha tem descrição e valor (ex: 12/11 Mercado Livre - Parcela 2/10 R$ 149,90).', 'error');
+        return;
+      }
+      invoiceReviewItems = parsed;
+      setImportStatusBanner(`✓ ${parsed.length} lançamento(s) extraídos do Markdown colado. Revise a tabela abaixo antes de confirmar.`, 'success');
+      renderInvoiceReviewTable();
     });
   }
 
@@ -2701,7 +3096,7 @@ function renderFaturasView() {
         <div class="fatura-card-actions" style="flex-wrap:wrap;">
           <div style="display:flex; gap:6px;">
             <button class="btn-secondary" data-add-tx-account="${acc.id}">+ Lançar</button>
-            <button class="btn-secondary" data-import-invoice-acc="${acc.id}" title="Fazer upload de fatura CSV, PDF ou Foto para este cartão">↑ Importar Fatura</button>
+            <button class="btn-secondary" data-import-invoice-acc="${acc.id}" title="Fazer upload de fatura CSV, Markdown (.md), PDF ou Foto para este cartão">↑ Importar Fatura</button>
           </div>
           <button class="btn-primary" data-toggle-paid-invoice="${acc.id}" data-invoice-total="${spentCents}" style="padding:7px 14px; font-size:12px;">
             ${meta.status === 'paid' ? 'Reabrir Fatura' : 'Pagar Fatura (Debitar Conta)'}
@@ -2720,7 +3115,7 @@ function renderFaturasView() {
         <p class="vs-prev">Compras após o dia de fechamento entram automaticamente na fatura do mês seguinte.</p>
       </div>
       <div style="display:flex; gap:10px; flex-wrap:wrap;">
-        <button class="btn-secondary" id="btn-import-invoice-top">↑ Importar Fatura (CSV/PDF/Foto)</button>
+        <button class="btn-secondary" id="btn-import-invoice-top">↑ Importar Fatura (CSV/MD/PDF/Foto)</button>
         <button class="btn-primary" id="btn-new-invoice-card">+ Novo Cartão / Fatura</button>
       </div>
     </div>
