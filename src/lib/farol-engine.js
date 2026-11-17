@@ -191,6 +191,14 @@ function getCleanEmptyState(userName = 'Meu nome') {
   return {
     ...base,
     lastUsedAccountId: 'acc-nubank',
+    profile: {
+      ...base.profile,
+      name: userName,
+      monthlyBudgetCents: 0,
+      emergencyGoalCents: 0,
+      monthlySalaryCents: 0,
+    },
+    categories: base.categories.map(c => ({ ...c, budgetCents: 0 })),
     accounts: [
       { id: 'acc-nubank', name: 'Conta Principal', type: 'Conta Corrente', initialBalanceCents: 0, limitCents: 0, closingDay: 5, dueDay: 12 }
     ],
@@ -241,6 +249,11 @@ function hasCustomizedUserData(st) {
   }
 
   if ((Number(st.profile?.monthlySalaryCents) || 0) > 0 || (Number(st.profile?.monthlyBudgetCents) || 0) > 0) {
+    return true;
+  }
+
+  const emergencyGoalCents = Number(st.profile?.emergencyGoalCents) || 0;
+  if (emergencyGoalCents > 0 && emergencyGoalCents !== 33000) {
     return true;
   }
 
@@ -328,9 +341,10 @@ function mergeDefaultCategories(targetState) {
   if (!targetState || !Array.isArray(targetState.categories)) return targetState;
   const existingIds = new Set(targetState.categories.map(c => c.id));
   const defaults = getDefaultState().categories;
+  const zeroBudgets = !targetState.isExplicitDemo;
   defaults.forEach(defCat => {
     if (!existingIds.has(defCat.id)) {
-      targetState.categories.push(defCat);
+      targetState.categories.push(zeroBudgets ? { ...defCat, budgetCents: 0 } : defCat);
     }
   });
   return targetState;
@@ -569,7 +583,7 @@ function computeMonthMetrics(ym = state.selectedMonth) {
     const isVolatile = a.category === 'Cripto' || a.category === 'Ações' || a.category === 'FIIs';
     return isLiquid && !isVolatile;
   });
-  const reserveGoalCents = Number(state.profile.emergencyGoalCents) || 33000;
+  const reserveGoalCents = Math.max(0, Number(state.profile.emergencyGoalCents) || 0);
   const reserveCurrentCents = Math.max(0, liquidReserveAssets.reduce((s, a) => s + (Number(a.amountCents) || 0), 0));
   const reservePct = reserveGoalCents > 0 ? Math.min(100, Math.round((reserveCurrentCents / reserveGoalCents) * 100)) : 0;
 
@@ -3457,28 +3471,83 @@ function bindCategoriasEvents() {
 // ============================================================
 // 7. ABA: METAS ESTRATÉGICAS
 // ============================================================
+function openGoalModal(goalId = null) {
+  const modal = document.getElementById('modal-goal');
+  if (!modal) return;
+  const goal = goalId ? state.goals.find(g => g.id === goalId) : null;
+  document.getElementById('modal-goal-title').textContent = goal ? 'Editar meta' : 'Nova meta';
+  document.getElementById('goal-id').value = goal ? goal.id : '';
+  document.getElementById('goal-title').value = goal ? goal.title : '';
+  document.getElementById('goal-color').value = goal ? (goal.color || '#38b6ff') : '#38b6ff';
+  document.getElementById('goal-current').value = goal ? fromCents(goal.currentCents || 0).toFixed(2) : '0.00';
+  document.getElementById('goal-target').value = goal ? fromCents(goal.targetCents || 0).toFixed(2) : '';
+  document.getElementById('goal-deadline').value = goal && goal.deadline ? goal.deadline : '';
+  const deleteBtn = document.getElementById('btn-delete-goal');
+  if (deleteBtn) deleteBtn.style.display = goal ? 'inline-flex' : 'none';
+  const submitBtn = document.getElementById('btn-goal-submit');
+  if (submitBtn) submitBtn.textContent = goal ? 'Salvar alterações' : 'Criar meta';
+  modal.classList.add('open');
+}
+
 function renderMetasView() {
+  const headerHtml = `
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:16px;">
+      <div>
+        <div class="card-title" style="font-size:15px;">Suas Metas Estratégicas</div>
+        <div class="vs-prev" style="margin-top:2px;">Acompanhe seus objetivos, edite prazos e registre aportes.</div>
+      </div>
+      <button type="button" class="btn-primary" id="btn-new-goal">+ Nova Meta</button>
+    </div>
+  `;
+
+  if (!state.goals.length) {
+    return `
+      ${headerHtml}
+      <div class="card" style="text-align:center; padding:32px 20px;">
+        <div style="font-size:15px; font-weight:600; margin-bottom:6px;">Nenhuma meta cadastrada ainda</div>
+        <div class="vs-prev" style="margin-bottom:16px;">Crie sua primeira meta financeira para acompanhar seu progresso mês a mês.</div>
+        <button type="button" class="btn-secondary" id="btn-empty-new-goal">+ Criar primeira meta</button>
+      </div>
+    `;
+  }
+
   const html = state.goals.map(g => {
     const pct = g.targetCents > 0 ? Math.min(100, Math.round((g.currentCents / g.targetCents) * 100)) : 0;
+    const deadlineText = g.deadline ? `Prazo · ${g.deadline}` : 'Sem prazo definido';
     return `
       <div class="card">
         <div class="card-header-row">
-          <span style="font-weight:600;">${g.title}</span>
+          <div style="min-width:0;">
+            <span style="font-weight:600; display:block;">${g.title}</span>
+            <span style="font-size:11.5px; color:var(--text-muted);">${deadlineText}</span>
+          </div>
           <span class="cat-pct-badge">${pct}%</span>
         </div>
-        <div class="big-currency sensitive-val" style="font-size:22px;">${fmtBRL(g.currentCents)} <span class="currency-sub">/ ${fmtBRL(g.targetCents)}</span></div>
+        <div class="big-currency sensitive-val" style="font-size:22px; margin-top:8px;">${fmtBRL(g.currentCents)} <span class="currency-sub">/ ${fmtBRL(g.targetCents)}</span></div>
         <div class="cat-progress-track" style="margin:14px 0;">
-          <div class="cat-progress-fill" style="width:${Math.max(3, pct)}%; background:${g.color};"></div>
+          <div class="cat-progress-fill" style="width:${pct > 0 ? Math.max(3, pct) : 0}%; background:${g.color || '#38b6ff'};"></div>
         </div>
-        <button class="btn-secondary" data-aporte-goal="${g.id}">+ Registrar Aporte</button>
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="btn-secondary" style="flex:1;" data-aporte-goal="${g.id}">+ Registrar Aporte</button>
+          <button type="button" class="btn-secondary" data-edit-goal="${g.id}" aria-label="Editar meta ${g.title}">Editar</button>
+        </div>
       </div>
     `;
   }).join('');
 
-  return `<div class="cards-grid-3">${html}</div>`;
+  return `${headerHtml}<div class="cards-grid-3">${html}</div>`;
 }
 
 function bindMetasEvents() {
+  const newGoalBtn = document.getElementById('btn-new-goal');
+  if (newGoalBtn) newGoalBtn.addEventListener('click', () => openGoalModal(null));
+  const emptyGoalBtn = document.getElementById('btn-empty-new-goal');
+  if (emptyGoalBtn) emptyGoalBtn.addEventListener('click', () => openGoalModal(null));
+
+  document.querySelectorAll('[data-edit-goal]').forEach(btn => {
+    btn.addEventListener('click', () => openGoalModal(btn.dataset.editGoal));
+  });
+
   document.querySelectorAll('[data-aporte-goal]').forEach(btn => {
     btn.addEventListener('click', () => {
       const goal = state.goals.find(g => g.id === btn.dataset.aporteGoal);
@@ -4405,7 +4474,7 @@ function openProfileModal() {
   document.getElementById('prof-salary').value = fromCents(state.profile.monthlySalaryCents || 0).toFixed(2);
   document.getElementById('prof-salary-day').value = state.profile.salaryDay || 5;
   document.getElementById('prof-budget').value = fromCents(state.profile.monthlyBudgetCents || 0).toFixed(2);
-  document.getElementById('prof-reserve-goal').value = fromCents(state.profile.emergencyGoalCents || 33000).toFixed(2);
+  document.getElementById('prof-reserve-goal').value = fromCents(state.profile.emergencyGoalCents || 0).toFixed(2);
   const importWrap = document.getElementById('prof-import-local-wrap');
   if (importWrap) {
     const canImportLocal = usersIndex.activeUserId !== 'user-default' && Boolean(getImportableLocalDefaultState());
@@ -4865,7 +4934,7 @@ export function initFarolApp() {
     state.profile.monthlySalaryCents = toCents(document.getElementById('prof-salary').value);
     state.profile.salaryDay = Math.min(28, Math.max(1, parseInt(document.getElementById('prof-salary-day').value, 10) || 5));
     state.profile.monthlyBudgetCents = toCents(document.getElementById('prof-budget').value);
-    state.profile.emergencyGoalCents = toCents(document.getElementById('prof-reserve-goal').value) || 33000;
+    state.profile.emergencyGoalCents = Math.max(0, toCents(document.getElementById('prof-reserve-goal').value));
 
     const u = usersIndex.users.find(x => x.id === usersIndex.activeUserId);
     if (u) {
@@ -5008,6 +5077,65 @@ export function initFarolApp() {
           state.accounts = state.accounts.filter(a => a.id !== accId);
           saveState();
           renderApp();
+        }
+      });
+    });
+  }
+
+  const formGoal = document.getElementById('form-goal');
+  if (formGoal) {
+    formGoal.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const goalId = document.getElementById('goal-id').value;
+      const title = document.getElementById('goal-title').value.trim();
+      const color = document.getElementById('goal-color').value || '#38b6ff';
+      const currentCents = Math.max(0, toCents(document.getElementById('goal-current').value));
+      const targetCents = Math.max(100, toCents(document.getElementById('goal-target').value));
+      const deadline = document.getElementById('goal-deadline').value || '2027-12';
+      if (!title) return;
+
+      if (goalId) {
+        const existing = state.goals.find(g => g.id === goalId);
+        if (existing) {
+          existing.title = title;
+          existing.color = color;
+          existing.currentCents = currentCents;
+          existing.targetCents = targetCents;
+          existing.deadline = deadline;
+        }
+      } else {
+        state.goals.push({
+          id: 'goal-' + Date.now(),
+          title,
+          color,
+          currentCents,
+          targetCents,
+          deadline
+        });
+      }
+
+      saveState();
+      document.getElementById('modal-goal').classList.remove('open');
+      renderApp();
+      showUndoToast(goalId ? 'Meta atualizada com sucesso!' : 'Nova meta criada!');
+    });
+  }
+
+  const delGoalBtn = document.getElementById('btn-delete-goal');
+  if (delGoalBtn) {
+    delGoalBtn.addEventListener('click', () => {
+      const goalId = document.getElementById('goal-id').value;
+      if (!goalId) return;
+      document.getElementById('modal-goal').classList.remove('open');
+      openDialogModal({
+        title: 'Excluir meta',
+        message: 'Tem certeza que deseja excluir esta meta estratégica?',
+        confirmLabel: 'Excluir',
+        onConfirm: () => {
+          state.goals = state.goals.filter(g => g.id !== goalId);
+          saveState();
+          renderApp();
+          showUndoToast('Meta removida.');
         }
       });
     });
@@ -5261,8 +5389,16 @@ function setAuthGateMode(mode) {
   if (feedback) feedback.style.display = 'none';
 }
 
-function resolveAuthenticatedWorkspaceState(user, candidateServerState) {
+function resolveAuthenticatedWorkspaceState(user, candidateServerState, authPurpose = null) {
   const cleanBase = getCleanEmptyState(user.name);
+
+  if (authPurpose === 'register') {
+    cleanBase.userEmail = user.email;
+    if (cleanBase.profile) cleanBase.profile.name = user.name;
+    cleanBase.isExplicitDemo = false;
+    return { nextState: cleanBase, shouldSync: true, migratedFromDefault: false };
+  }
+
   const serverIsDemo = Boolean(candidateServerState && isUntouchedDemoState(candidateServerState));
   const validServer = candidateServerState && typeof candidateServerState === 'object' && !serverIsDemo
     ? mergeDefaultCategories({ ...cleanBase, ...candidateServerState })
@@ -5300,7 +5436,7 @@ function resolveAuthenticatedWorkspaceState(user, candidateServerState) {
   } else if (localUserCustomized) {
     nextState = validLocalUser;
     shouldSync = true;
-  } else if (importableDefault && !alreadyInitializedCloudUser) {
+  } else if (importableDefault && !alreadyInitializedCloudUser && authPurpose !== 'register') {
     nextState = mergeDefaultCategories({ ...cleanBase, ...importableDefault, isExplicitDemo: false });
     shouldSync = true;
     migratedFromDefault = true;
@@ -5345,7 +5481,7 @@ function ensureUserInIndex(user) {
   saveUsersIndex(usersIndex);
 }
 
-function applyAuthenticatedUser(user, serverState, remember = true) {
+function applyAuthenticatedUser(user, serverState, remember = true, authPurpose = null) {
   cloudSessionUser = user;
   if (typeof window !== 'undefined') {
     if (remember) {
@@ -5356,7 +5492,7 @@ function applyAuthenticatedUser(user, serverState, remember = true) {
   }
   ensureUserInIndex(user);
 
-  const { nextState, shouldSync, migratedFromDefault } = resolveAuthenticatedWorkspaceState(user, serverState);
+  const { nextState, shouldSync, migratedFromDefault } = resolveAuthenticatedWorkspaceState(user, serverState, authPurpose);
   state = nextState;
 
   if (typeof window !== 'undefined') {
@@ -5494,7 +5630,7 @@ function bindAuthEvents() {
           return;
         }
         if (data.user) {
-          applyAuthenticatedUser(data.user, data.state, pendingOtpRemember);
+          applyAuthenticatedUser(data.user, data.state, pendingOtpRemember, data.purpose || null);
           showUndoToast(`Bem-vindo(a), ${data.user.name}! Conta sincronizada na nuvem.`);
         }
       } catch {
@@ -5611,7 +5747,7 @@ function bindAuthEvents() {
           clearInterval(otpCooldownInterval);
           otpCooldownInterval = null;
         }
-        applyAuthenticatedUser(data.user, data.state, pendingOtpRemember);
+        applyAuthenticatedUser(data.user, data.state, pendingOtpRemember, data.purpose || null);
         showUndoToast(`Código verificado! Bem-vindo(a), ${data.user.name}.`);
       } catch {
         showOtpMsg('Erro de rede ao validar o código.', true);

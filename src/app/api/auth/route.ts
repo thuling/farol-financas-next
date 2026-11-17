@@ -84,6 +84,11 @@ function hasCustomizedServerState(st: any): boolean {
     return true;
   }
 
+  const emergencyGoalCents = Number(st.profile?.emergencyGoalCents) || 0;
+  if (emergencyGoalCents > 0 && emergencyGoalCents !== 33000) {
+    return true;
+  }
+
   return false;
 }
 
@@ -464,7 +469,7 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      if (!parsedState && body.state && typeof body.state === 'object' && hasCustomizedServerState(body.state)) {
+      if (!parsedState && activeOtp.purpose !== 'register' && body.state && typeof body.state === 'object' && hasCustomizedServerState(body.state)) {
         parsedState = body.state;
         parsedState.userEmail = account.email;
         if (parsedState.profile) parsedState.profile.name = account.name;
@@ -479,7 +484,7 @@ export async function POST(req: NextRequest) {
             monthlySalaryCents: Math.round(Number(profile.monthlySalaryCents) || 0),
             salaryDay: Math.min(28, Math.max(1, Number(profile.salaryDay) || 5)),
             monthlyBudgetCents: Math.round(Number(profile.monthlyBudgetCents) || 0),
-            emergencyGoalCents: Math.round(Number(profile.emergencyGoalCents) || 33000),
+            emergencyGoalCents: Math.max(0, Math.round(Number(profile.emergencyGoalCents) || 0)),
             theme: String(parsedState.theme || 'dark'),
             hideValues: Boolean(parsedState.privacyMode ?? parsedState.hideValues),
             lastUsedAccountId: parsedState.lastUsedAccountId || null,
@@ -497,6 +502,7 @@ export async function POST(req: NextRequest) {
       const res = NextResponse.json({
         ok: true,
         step: 'authenticated',
+        purpose: activeOtp.purpose,
         user: { id: account.id, email: account.email, name: account.name },
         state: parsedState,
       });
