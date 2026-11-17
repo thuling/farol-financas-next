@@ -1,4 +1,116 @@
-export const FAROL_SHELL_HTML = `<div class="app-shell">
+export const FAROL_SHELL_HTML = `<!-- ==================== TELA INICIAL DE LOGIN / CRIAR CONTA (AUTH GATE) ==================== -->
+  <section class="auth-gate-screen" id="auth-gate-screen">
+    <div class="auth-gate-stage">
+      <!-- Card Esquerdo (Formulário sobreposto ao painel direito, fiel à referência) -->
+      <div class="auth-gate-form-card" id="auth-gate-form-card">
+        <div class="auth-gate-brand-mini">
+          <div class="brand-logo">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2v2"/><path d="M12 8a4 4 0 0 0-4 4v2h8v-2a4 4 0 0 0-4-4Z"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 6.34 1.41-1.41"/>
+            </svg>
+          </div>
+          <span>Farol Finanças</span>
+        </div>
+
+        <h2 class="auth-gate-title" id="auth-gate-title">Acesse sua conta</h2>
+
+        <form id="form-auth-gate" class="auth-gate-form">
+          <input type="hidden" id="gate-mode" value="login" />
+
+          <div class="auth-gate-input-box" id="gate-name-wrap" style="display:none;">
+            <span class="auth-gate-icon">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+              </svg>
+            </span>
+            <span class="auth-gate-sep"></span>
+            <input type="text" id="gate-name" class="auth-gate-input" placeholder="Digite seu nome completo" autocomplete="name" />
+          </div>
+
+          <div class="auth-gate-input-box">
+            <span class="auth-gate-icon">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+              </svg>
+            </span>
+            <span class="auth-gate-sep"></span>
+            <input type="email" id="gate-email" class="auth-gate-input" placeholder="Digite seu e-mail" autocomplete="email" required />
+          </div>
+
+          <div class="auth-gate-input-box">
+            <span class="auth-gate-icon">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/>
+              </svg>
+            </span>
+            <span class="auth-gate-sep"></span>
+            <input type="password" id="gate-password" class="auth-gate-input" placeholder="Digite sua senha" autocomplete="current-password" required />
+          </div>
+
+          <div class="auth-gate-meta-row" id="gate-meta-row">
+            <label class="auth-gate-remember">
+              <input type="checkbox" id="gate-remember" checked />
+              <span>Lembrar de mim</span>
+            </label>
+            <button type="button" class="auth-gate-link" id="gate-switch-inline">Criar conta grátis</button>
+          </div>
+
+          <div id="gate-feedback" class="auth-gate-feedback" style="display:none;"></div>
+
+          <div class="auth-gate-submit-wrap">
+            <button type="submit" class="auth-gate-submit-btn" id="gate-submit-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" x2="3" y1="12" y2="12"/>
+              </svg>
+              <span id="gate-submit-label">ENTRAR</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Painel Direito (Hero com Ondas Fluídas na Paleta Farol, fiel à referência) -->
+      <div class="auth-gate-hero-card">
+        <svg class="auth-gate-waves-svg" viewBox="0 0 500 600" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="farolWaveBg" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#0f2940" />
+              <stop offset="50%" stop-color="#18476b" />
+              <stop offset="100%" stop-color="#0b1f32" />
+            </linearGradient>
+            <linearGradient id="farolBlob1" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#38b6ff" stop-opacity="0.45" />
+              <stop offset="100%" stop-color="#1d4ed8" stop-opacity="0.18" />
+            </linearGradient>
+            <linearGradient id="farolBlob2" x1="1" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#56c2f6" stop-opacity="0.38" />
+              <stop offset="100%" stop-color="#153752" stop-opacity="0.55" />
+            </linearGradient>
+            <linearGradient id="farolBlob3" x1="0" y1="1" x2="1" y2="0">
+              <stop offset="0%" stop-color="#091724" stop-opacity="0.7" />
+              <stop offset="100%" stop-color="#2b6cb0" stop-opacity="0.35" />
+            </linearGradient>
+          </defs>
+          <rect width="500" height="600" fill="url(#farolWaveBg)" />
+          <path d="M -40,-20 L 380,-20 C 430,110 380,260 280,290 C 170,320 110,220 20,260 C -40,285 -40,150 -40,-20 Z" fill="url(#farolBlob1)" />
+          <path d="M 520,160 C 410,180 390,340 450,430 C 490,490 520,460 520,380 Z" fill="url(#farolBlob2)" />
+          <path d="M -30,520 C 60,390 220,370 340,440 C 440,498 480,560 520,620 L -30,620 Z" fill="url(#farolBlob3)" />
+          <circle cx="10" cy="310" r="68" fill="url(#farolBlob2)" />
+        </svg>
+
+        <div class="auth-gate-hero-content">
+          <h3 class="auth-gate-hero-title" id="gate-hero-title">BEM-VINDO!</h3>
+          <p class="auth-gate-hero-sub" id="gate-hero-sub">
+            Insira seus dados e comece sua jornada financeira conosco no Farol
+          </p>
+          <button type="button" class="auth-gate-hero-btn" id="gate-hero-toggle-btn">
+            CRIAR CONTA
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="app-shell" id="main-app-shell" style="display:none;">
     <!-- ==================== SIDEBAR ==================== -->
     <aside class="sidebar">
       <div class="sidebar-top-group">

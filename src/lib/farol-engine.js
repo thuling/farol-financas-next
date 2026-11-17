@@ -4038,7 +4038,70 @@ function openDialogModal({ title, message, inputLabel, inputType = 'text', defau
 // ============================================================
 // AUTENTICAÇÃO DE CONTA NA NUVEM (LOGIN / CADASTRO) & POSTGRESQL
 // ============================================================
+const AUTH_SESSION_STORAGE_KEY = 'farol_auth_session_v1';
 let cloudSessionUser = null;
+
+function setAuthGateVisibility(showGate) {
+  const gate = document.getElementById('auth-gate-screen');
+  const shell = document.getElementById('main-app-shell');
+  if (gate) gate.style.display = showGate ? 'flex' : 'none';
+  if (shell) shell.style.display = showGate ? 'none' : 'grid';
+}
+
+function setAuthGateMode(mode) {
+  const isReg = mode === 'register';
+  const modeInput = document.getElementById('gate-mode');
+  const titleEl = document.getElementById('auth-gate-title');
+  const nameWrap = document.getElementById('gate-name-wrap');
+  const submitLabel = document.getElementById('gate-submit-label');
+  const heroTitle = document.getElementById('gate-hero-title');
+  const heroSub = document.getElementById('gate-hero-sub');
+  const heroBtn = document.getElementById('gate-hero-toggle-btn');
+  const inlineSwitch = document.getElementById('gate-switch-inline');
+  const feedback = document.getElementById('gate-feedback');
+
+  if (modeInput) modeInput.value = isReg ? 'register' : 'login';
+  if (titleEl) titleEl.textContent = isReg ? 'Crie sua conta' : 'Acesse sua conta';
+  if (nameWrap) nameWrap.style.display = isReg ? 'flex' : 'none';
+  if (submitLabel) submitLabel.textContent = isReg ? 'CRIAR CONTA' : 'ENTRAR';
+  if (heroTitle) heroTitle.textContent = isReg ? 'JÁ TEM CONTA?' : 'BEM-VINDO!';
+  if (heroSub) {
+    heroSub.textContent = isReg
+      ? 'Entre com seu e-mail e senha para acessar seu painel financeiro sincronizado na nuvem'
+      : 'Insira seus dados e comece sua jornada financeira conosco no Farol';
+  }
+  if (heroBtn) heroBtn.textContent = isReg ? 'FAZER LOGIN' : 'CRIAR CONTA';
+  if (inlineSwitch) inlineSwitch.textContent = isReg ? 'Já tenho conta' : 'Criar conta grátis';
+  if (feedback) feedback.style.display = 'none';
+}
+
+function applyAuthenticatedUser(user, serverState, remember = true) {
+  cloudSessionUser = user;
+  if (typeof window !== 'undefined') {
+    if (remember) {
+      window.localStorage.setItem(AUTH_SESSION_STORAGE_KEY, JSON.stringify(user));
+    } else {
+      window.localStorage.removeItem(AUTH_SESSION_STORAGE_KEY);
+    }
+  }
+  usersIndex.activeUserId = user.id;
+  if (!usersIndex.users.some(u => u.id === user.id)) {
+    usersIndex.users.push({ id: user.id, name: user.name });
+  }
+  saveUsersIndex();
+
+  if (serverState && typeof serverState === 'object') {
+    state = mergeDefaultCategories({ ...getDefaultState(), ...serverState });
+  } else {
+    state = loadStateForUser(user.id);
+  }
+  state.userEmail = user.email;
+  if (state.profile) state.profile.name = user.name;
+  saveState();
+  updateAuthHeaderBadge();
+  setAuthGateVisibility(false);
+  renderApp();
+}
 
 function updateAuthHeaderBadge() {
   const dot = document.getElementById('auth-status-dot');
@@ -4083,6 +4146,81 @@ function openAuthModal() {
 }
 
 function bindAuthEvents() {
+  // Restaura sessão lembrada localmente para não piscar caso já esteja autenticado
+  if (typeof window !== 'undefined') {
+    try {
+      const savedUser = JSON.parse(window.localStorage.getItem(AUTH_SESSION_STORAGE_KEY) || 'null');
+      if (savedUser && savedUser.id && savedUser.email) {
+        cloudSessionUser = savedUser;
+        usersIndex.activeUserId = savedUser.id;
+        state = loadStateForUser(savedUser.id);
+        setAuthGateVisibility(false);
+        updateAuthHeaderBadge();
+      } else {
+        setAuthGateVisibility(true);
+      }
+    } catch {
+      setAuthGateVisibility(true);
+    }
+  }
+
+  // Eventos da Tela Inicial (Auth Gate)
+  const heroToggleBtn = document.getElementById('gate-hero-toggle-btn');
+  if (heroToggleBtn) {
+    heroToggleBtn.addEventListener('click', () => {
+      const cur = document.getElementById('gate-mode')?.value || 'login';
+      setAuthGateMode(cur === 'login' ? 'register' : 'login');
+    });
+  }
+
+  const inlineSwitchBtn = document.getElementById('gate-switch-inline');
+  if (inlineSwitchBtn) {
+    inlineSwitchBtn.addEventListener('click', () => {
+      const cur = document.getElementById('gate-mode')?.value || 'login';
+      setAuthGateMode(cur === 'login' ? 'register' : 'login');
+    });
+  }
+
+  const formGate = document.getElementById('form-auth-gate');
+  if (formGate) {
+    formGate.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const feedback = document.getElementById('gate-feedback');
+      const showGateMsg = (msg, isError = false) => {
+        if (!feedback) return;
+        feedback.style.display = 'block';
+        feedback.style.background = isError ? 'var(--coral-soft)' : 'var(--green-soft)';
+        feedback.style.color = isError ? 'var(--coral-red)' : 'var(--green-emerald)';
+        feedback.textContent = msg;
+      };
+
+      const action = document.getElementById('gate-mode')?.value || 'login';
+      const name = document.getElementById('gate-name')?.value?.trim() || state.profile.name || 'Minha Conta';
+      const email = document.getElementById('gate-email')?.value?.trim() || '';
+      const password = document.getElementById('gate-password')?.value || '';
+      const remember = Boolean(document.getElementById('gate-remember')?.checked);
+
+      showGateMsg(action === 'register' ? 'Criando sua conta na nuvem...' : 'Autenticando sua conta...', false);
+
+      try {
+        const res = await fetch('/api/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action, name, email, password, state })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          showGateMsg(data.error || 'Não foi possível autenticar.', true);
+          return;
+        }
+        applyAuthenticatedUser(data.user, data.state, remember);
+        showUndoToast(`Bem-vindo(a), ${data.user.name}! Conta sincronizada na nuvem.`);
+      } catch {
+        showGateMsg('Erro de conexão com o servidor.', true);
+      }
+    });
+  }
+
   const openBtn = document.getElementById('btn-open-auth');
   if (openBtn) {
     openBtn.addEventListener('click', () => openAuthModal());
@@ -4112,9 +4250,12 @@ function bindAuthEvents() {
         body: JSON.stringify({ action: 'logout' })
       }).catch(() => {});
       cloudSessionUser = null;
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem(AUTH_SESSION_STORAGE_KEY);
+      }
       updateAuthHeaderBadge();
       document.getElementById('modal-auth')?.classList.remove('open');
-      showUndoToast('Sessão encerrada neste dispositivo.');
+      setAuthGateVisibility(true);
     });
   }
 
@@ -4156,21 +4297,7 @@ function bindAuthEvents() {
           return;
         }
 
-        cloudSessionUser = data.user;
-        usersIndex.activeUserId = data.user.id;
-        if (!usersIndex.users.some(u => u.id === data.user.id)) {
-          usersIndex.users.push({ id: data.user.id, name: data.user.name });
-        }
-        saveUsersIndex();
-
-        if (data.state && typeof data.state === 'object') {
-          state = mergeDefaultCategories({ ...getDefaultState(), ...data.state });
-        }
-        state.userEmail = data.user.email;
-        if (state.profile) state.profile.name = data.user.name;
-        saveState();
-        updateAuthHeaderBadge();
-        renderApp();
+        applyAuthenticatedUser(data.user, data.state, true);
         document.getElementById('modal-auth')?.classList.remove('open');
         showUndoToast(`Conectado como ${data.user.email}. Dados salvos na nuvem!`);
       } catch {
@@ -4201,14 +4328,23 @@ async function hydrateFromCloud() {
       const authData = await authRes.json();
       if (authData && authData.authenticated && authData.user) {
         cloudSessionUser = authData.user;
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(AUTH_SESSION_STORAGE_KEY, JSON.stringify(authData.user));
+        }
         usersIndex.activeUserId = authData.user.id;
         if (!usersIndex.users.some(u => u.id === authData.user.id)) {
           usersIndex.users.push({ id: authData.user.id, name: authData.user.name });
         }
         saveUsersIndex();
         updateAuthHeaderBadge();
+        setAuthGateVisibility(false);
+      } else if (!cloudSessionUser) {
+        setAuthGateVisibility(true);
+        return;
       }
     }
+
+    if (!cloudSessionUser) return;
 
     const res = await fetch('/api/state?userId=' + encodeURIComponent(usersIndex.activeUserId));
     if (!res.ok) return;
