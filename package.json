@@ -7,6 +7,7 @@
     "build": "prisma generate && node scripts/sync-db.mjs && next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "node scripts/security-tests.mjs",
     "db:push": "prisma db push"
   },
   "dependencies": {

@@ -5,6 +5,20 @@
 const USERS_INDEX_KEY = 'farol_financas_users_v2';
 const LEGACY_V1_KEY = 'farol_financas_state_v1';
 
+function esc(val) {
+  return String(val ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function safeCssColor(val, fallback = '#38b6ff') {
+  const s = String(val ?? '').trim();
+  return /^#[0-9a-fA-F]{3,8}$/.test(s) ? s : fallback;
+}
+
 function getTodayISO() {
   const now = new Date();
   const y = now.getFullYear();
@@ -848,15 +862,16 @@ function renderVisaoGeral() {
         ? `<span class="sensitive-val" style="color:var(--text-muted); font-size:12px; font-weight:500;"> / ${fmtBRL(d.budgetCents)}</span>`
         : '';
 
+      const safeCol = safeCssColor(d.color);
       return `
         <div class="cat-bar-item" style="gap:6px;">
           <div class="cat-bar-header">
             <div class="cat-name-group">
-              <span style="width:24px; height:24px; border-radius:7px; background:${d.color}26; color:${d.color}; display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:700;">
+              <span style="width:24px; height:24px; border-radius:7px; background:${safeCol}26; color:${safeCol}; display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:700;">
                 ●
               </span>
-              <span style="font-weight:500;">${d.name}</span>
-              <span class="cat-pct-badge">${d.pctLabel || (d.pct + '%')}</span>
+              <span style="font-weight:500;">${esc(d.name)}</span>
+              <span class="cat-pct-badge">${esc(d.pctLabel || (d.pct + '%'))}</span>
             </div>
             <div style="display:flex; align-items:baseline; gap:2px;">
               <span class="cat-amount sensitive-val" style="color:${amountColor};">${fmtBRL(d.totalCents)}</span>
@@ -865,7 +880,7 @@ function renderVisaoGeral() {
             </div>
           </div>
           <div class="cat-progress-track" style="height:5px;">
-            <div class="cat-progress-fill" style="width:${Math.max(4, d.pct)}%; background:${d.color};"></div>
+            <div class="cat-progress-fill" style="width:${Math.max(4, d.pct)}%; background:${safeCol};"></div>
           </div>
           ${m.distribution.length === 1 && idx === 0
             ? `<div class="cat-caption">Única categoria com gasto neste mês.</div>`
@@ -888,10 +903,10 @@ function renderVisaoGeral() {
 
   const topCat = m.distribution[0];
   const insightTitle = topCat
-    ? `${topCat.name} concentra ${topCat.pct}% dos gastos`
+    ? `${esc(topCat.name)} concentra ${topCat.pct}% dos gastos`
     : 'Seus gastos estão sob controle';
   const insightDesc = topCat
-    ? `Total de ${fmtBRL(topCat.totalCents)} registrado em ${topCat.name} neste período. Acompanhe o limite diário para equilibrar o mês.`
+    ? `Total de ${fmtBRL(topCat.totalCents)} registrado em ${esc(topCat.name)} neste período. Acompanhe o limite diário para equilibrar o mês.`
     : 'Adicione suas receitas e despesas para receber leituras automáticas do seu comportamento financeiro.';
 
   return `
@@ -1085,8 +1100,8 @@ function renderVisaoGeralRow4(m) {
         return `
           <div class="recorrencia-mini-row">
             <span style="display:inline-flex; align-items:center; gap:8px;">
-              <span class="cat-dot" style="background:${cat.color};"></span>
-              <span style="font-weight:500;">${r.description}</span>
+              <span class="cat-dot" style="background:${safeCssColor(cat.color)};"></span>
+              <span style="font-weight:500;">${esc(r.description)}</span>
             </span>
             <span>
               <b class="sensitive-val">${fmtBRL(r.amountCents)}</b>
@@ -1129,8 +1144,8 @@ function renderVisaoGeralRow4(m) {
         return `
           <div class="goal-highlight-box">
             <span class="goal-priority-pill">Prioridade</span>
-            <div class="goal-spotlight-title" style="font-size:16px; font-weight:700; color:#fff;">${topGoal.title}</div>
-            <div style="font-size:11.5px; color:#c8e4f7;">Previsão de conclusão · ${topGoal.deadline || '2027-12'}</div>
+            <div class="goal-spotlight-title" style="font-size:16px; font-weight:700; color:#fff;">${esc(topGoal.title)}</div>
+            <div style="font-size:11.5px; color:#c8e4f7;">Previsão de conclusão · ${esc(topGoal.deadline || '2027-12')}</div>
           </div>
           <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:12px;">
             <span class="sensitive-val" style="font-size:12px; font-weight:600;">${fmtBRL(topGoal.currentCents)}</span>
@@ -1213,7 +1228,15 @@ function bindChartTooltips() {
     const title = el.dataset.tipTitle || '';
     const val = el.dataset.tipVal || '';
     const hidden = state.privacyMode ? '•••' : val;
-    tip.innerHTML = `<div class="tooltip-title">${title}</div><div class="tooltip-value">${hidden}</div>`;
+    tip.textContent = '';
+    const titleDiv = document.createElement('div');
+    titleDiv.className = 'tooltip-title';
+    titleDiv.textContent = title;
+    const valDiv = document.createElement('div');
+    valDiv.className = 'tooltip-value';
+    valDiv.textContent = hidden;
+    tip.appendChild(titleDiv);
+    tip.appendChild(valDiv);
     tip.classList.add('visible');
     const clampedX = Math.min(window.innerWidth - 90, Math.max(90, clientX));
     tip.style.left = `${clampedX}px`;
@@ -1318,9 +1341,9 @@ function buildDonutSvg(distribution, totalExpenseCents) {
   const segments = distribution.map(d => {
     const frac = d.totalCents / totalExpenseCents;
     const dash = frac * circumference;
-    const seg = `<circle cx="73" cy="73" r="${radius}" fill="none" stroke="${d.color}" stroke-width="18"
+    const seg = `<circle cx="73" cy="73" r="${radius}" fill="none" stroke="${safeCssColor(d.color)}" stroke-width="18"
       class="donut-slice-hover"
-      data-tip-title="${d.name} (${d.pct}%)"
+      data-tip-title="${esc(d.name)} (${d.pct}%)"
       data-tip-val="${fmtBRL(d.totalCents)}"
       stroke-dasharray="${dash} ${circumference - dash}"
       stroke-dashoffset="${-offset}"
@@ -1457,9 +1480,9 @@ function renderTransacoesView() {
 
   const uniqueTags = [...new Set(state.transactions.map(t => (t.tag || '').trim()).filter(Boolean))];
 
-  const catOptions = state.categories.map(c => `<option value="${c.id}" ${txFilter.categoryId === c.id ? 'selected' : ''}>${c.name}</option>`).join('');
-  const accOptions = state.accounts.map(a => `<option value="${a.id}" ${txFilter.accountId === a.id ? 'selected' : ''}>${a.name}</option>`).join('');
-  const tagOptions = uniqueTags.map(tag => `<option value="${tag}" ${txFilter.tag === tag ? 'selected' : ''}>#${tag}</option>`).join('');
+  const catOptions = state.categories.map(c => `<option value="${esc(c.id)}" ${txFilter.categoryId === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+  const accOptions = state.accounts.map(a => `<option value="${esc(a.id)}" ${txFilter.accountId === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('');
+  const tagOptions = uniqueTags.map(tag => `<option value="${esc(tag)}" ${txFilter.tag === tag ? 'selected' : ''}>#${esc(tag)}</option>`).join('');
 
   const allSelected = filtered.length > 0 && filtered.every(t => selectedTxIds.has(t.id));
 
@@ -1469,11 +1492,11 @@ function renderTransacoesView() {
       <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
         <select id="batch-cat-select" class="form-select" style="width:auto; padding:6px 10px; font-size:12px;">
           <option value="">Alterar Categoria...</option>
-          ${state.categories.filter(c => !c.archived).map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+          ${state.categories.filter(c => !c.archived).map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}
         </select>
         <select id="batch-acc-select" class="form-select" style="width:auto; padding:6px 10px; font-size:12px;">
           <option value="">Alterar Conta...</option>
-          ${state.accounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('')}
+          ${state.accounts.map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('')}
         </select>
         <button class="btn-secondary" id="btn-batch-tag" style="padding:6px 12px; font-size:12px;">Definir Tag</button>
         <button class="btn-danger-ghost" id="btn-batch-delete">Excluir Lote</button>
@@ -1489,19 +1512,19 @@ function renderTransacoesView() {
         const checked = selectedTxIds.has(t.id) ? 'checked' : '';
         return `
           <tr>
-            <td><input type="checkbox" class="tx-row-check" data-tx-check="${t.id}" ${checked} /></td>
-            <td>${fmtDateBR(t.date)}</td>
+            <td><input type="checkbox" class="tx-row-check" data-tx-check="${esc(t.id)}" ${checked} /></td>
+            <td>${esc(fmtDateBR(t.date))}</td>
             <td style="font-weight:600;">
-              ${t.description}
-              ${t.tag ? `<span class="tag-pill">#${t.tag}</span>` : ''}
+              ${esc(t.description)}
+              ${t.tag ? `<span class="tag-pill">#${esc(t.tag)}</span>` : ''}
             </td>
             <td>
               <span style="display:inline-flex; align-items:center; gap:6px;">
-                <span class="cat-dot" style="background:${cat.color}"></span>
-                ${cat.name}
+                <span class="cat-dot" style="background:${safeCssColor(cat.color)}"></span>
+                ${esc(cat.name)}
               </span>
             </td>
-            <td>${acc.name} · <span style="color:var(--text-muted); font-size:11.5px;">${t.method || 'Pix'}</span></td>
+            <td>${esc(acc.name)} · <span style="color:var(--text-muted); font-size:11.5px;">${esc(t.method || 'Pix')}</span></td>
             <td>
               <span class="badge-type ${t.type === 'expense' ? 'expense' : 'income'}">
                 ${t.type === 'expense' ? 'Saída' : 'Entrada'}
@@ -1511,8 +1534,8 @@ function renderTransacoesView() {
               ${t.type === 'expense' ? '-' : '+'}${fmtBRL(t.amountCents)}
             </td>
             <td style="text-align:right; white-space:nowrap;">
-              <button class="btn-icon-edit" data-edit-tx="${t.id}">✎ Editar</button>
-              <button class="btn-danger-ghost" data-del-tx="${t.id}">Excluir</button>
+              <button class="btn-icon-edit" data-edit-tx="${esc(t.id)}">✎ Editar</button>
+              <button class="btn-danger-ghost" data-del-tx="${esc(t.id)}">Excluir</button>
             </td>
           </tr>
         `;
@@ -1534,7 +1557,7 @@ function renderTransacoesView() {
       </div>
 
       <div class="tx-filters-grid">
-        <input type="text" id="filter-search" class="form-input" placeholder="Buscar descrição ou tag..." value="${txFilter.search}" />
+        <input type="text" id="filter-search" class="form-input" placeholder="Buscar descrição ou tag..." value="${esc(txFilter.search)}" />
         <select id="filter-period" class="form-select">
           <option value="month" ${txFilter.period === 'month' ? 'selected' : ''}>Mês selecionado</option>
           <option value="today" ${txFilter.period === 'today' ? 'selected' : ''}>Hoje</option>
@@ -2175,7 +2198,7 @@ function renderInvoiceReviewTable() {
   confirmBtn.textContent = `Confirmar e Lançar (${selectedActiveCount} item${selectedActiveCount === 1 ? '' : 's'})`;
 
   tbody.innerHTML = invoiceReviewItems.map((it, idx) => {
-    const catOptions = activeCats.map(c => `<option value="${c.id}" ${c.id === it.categoryId ? 'selected' : ''}>${c.name}</option>`).join('');
+    const catOptions = activeCats.map(c => `<option value="${esc(c.id)}" ${c.id === it.categoryId ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
     const isPayment = it.entryKind === 'payment';
     const isRefund = it.entryKind === 'refund';
     const rowOpacity = !it.include ? 'opacity:0.52;' : '';
@@ -2187,11 +2210,11 @@ function renderInvoiceReviewTable() {
           <input type="checkbox" class="imp-row-check" data-imp-idx="${idx}" ${it.include ? 'checked' : ''} />
         </td>
         <td>
-          <input type="date" class="form-input imp-row-date" data-imp-idx="${idx}" value="${it.date}" style="padding:5px 7px; font-size:11.5px;" />
+          <input type="date" class="form-input imp-row-date" data-imp-idx="${idx}" value="${esc(it.date)}" style="padding:5px 7px; font-size:11.5px;" />
         </td>
         <td>
           <div style="display:flex; align-items:center; gap:6px;">
-            <input type="text" class="form-input imp-row-title" data-imp-idx="${idx}" value="${it.cleanTitle.replace(/"/g, '&quot;')}" style="padding:5px 8px; font-size:12px; font-weight:600;" />
+            <input type="text" class="form-input imp-row-title" data-imp-idx="${idx}" value="${esc(it.cleanTitle)}" style="padding:5px 8px; font-size:12px; font-weight:600;" />
             ${!it.matchedByRule && it.entryKind === 'purchase' ? `<span class="tag-pill" title="Estabelecimento sem regra local — revise ou clique em Sugerir c/ IA" style="font-size:10px; color:var(--amber-gold);">Novo</span>` : ''}
           </div>
         </td>
@@ -2310,7 +2333,7 @@ function openImportInvoiceModal(preselectedAccountId = null) {
   const accSelect = document.getElementById('imp-target-account');
   if (accSelect) {
     accSelect.innerHTML = state.accounts
-      .map(a => `<option value="${a.id}">${a.name} (${a.type})</option>`)
+      .map(a => `<option value="${esc(a.id)}">${esc(a.name)} (${esc(a.type)})</option>`)
       .join('');
     if (preselectedAccountId && state.accounts.some(a => a.id === preselectedAccountId)) {
       accSelect.value = preselectedAccountId;
@@ -2872,16 +2895,16 @@ function renderRecorrenciasView() {
     return `
       <tr>
         <td>Todo dia <b>${r.day}</b></td>
-        <td style="font-weight:600;">${r.description}</td>
-        <td><span class="cat-dot" style="background:${cat.color}; display:inline-block; margin-right:6px;"></span>${cat.name}</td>
-        <td style="color:var(--text-secondary);">${acc.name}</td>
+        <td style="font-weight:600;">${esc(r.description)}</td>
+        <td><span class="cat-dot" style="background:${safeCssColor(cat.color)}; display:inline-block; margin-right:6px;"></span>${esc(cat.name)}</td>
+        <td style="color:var(--text-secondary);">${esc(acc.name)}</td>
         <td>${statusPill}</td>
         <td class="sensitive-val" style="font-weight:700;">${fmtBRL(r.amountCents)}</td>
         <td style="text-align:right;">
           <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:nowrap;">
-            <button class="btn-icon-edit" data-edit-rec="${r.id}">✎ Editar</button>
-            <button class="btn-secondary" data-toggle-rec="${r.id}">${r.active ? 'Pausar' : 'Ativar Automático'}</button>
-            <button class="btn-danger-ghost" data-del-rec="${r.id}">Remover</button>
+            <button class="btn-icon-edit" data-edit-rec="${esc(r.id)}">✎ Editar</button>
+            <button class="btn-secondary" data-toggle-rec="${esc(r.id)}">${r.active ? 'Pausar' : 'Ativar Automático'}</button>
+            <button class="btn-danger-ghost" data-del-rec="${esc(r.id)}">Remover</button>
           </div>
         </td>
       </tr>
@@ -3059,7 +3082,7 @@ function renderFluxoCaixaView() {
     ? `<p class="vs-prev">Nenhuma despesa registrada neste mês.</p>`
     : topExpenses.map(t => `
         <div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border-subtle); font-size:13px;">
-          <span>${fmtDateBR(t.date)} · <b>${t.description}</b></span>
+          <span>${esc(fmtDateBR(t.date))} · <b>${esc(t.description)}</b></span>
           <span class="sensitive-val" style="color:var(--coral-red); font-weight:700;">-${fmtBRL(t.amountCents)}</span>
         </div>
       `).join('');
@@ -3210,7 +3233,7 @@ function renderFaturasView() {
       ? `<div class="fatura-tx-item" style="color:var(--text-muted);">Nenhuma compra nesta fatura (fechamento dia ${acc.closingDay || 5})</div>`
       : accTxs.map(t => `
           <div class="fatura-tx-item">
-            <span>${fmtDateBR(t.date)} · ${t.description}</span>
+            <span>${esc(fmtDateBR(t.date))} · ${esc(t.description)}</span>
             <span class="sensitive-val" style="font-weight:600;">${fmtBRL(t.amountCents)}</span>
           </div>
         `).join('');
@@ -3226,14 +3249,14 @@ function renderFaturasView() {
                 </svg>
               </div>
               <div>
-                <div class="fatura-name">${acc.name}</div>
+                <div class="fatura-name">${esc(acc.name)}</div>
                 <div class="fatura-dates">Fecha dia ${acc.closingDay || 5} · Vencimento ${dueDateStr}</div>
               </div>
             </div>
 
             <div class="fatura-top-right">
               <span class="status-pill ${meta.status}">${statusLabels[meta.status] || 'Aberta'}</span>
-              <button class="btn-icon-edit" data-edit-invoice="${acc.id}" title="Editar fatura">
+              <button class="btn-icon-edit" data-edit-invoice="${esc(acc.id)}" title="Editar fatura">
                 ✎ Editar
               </button>
             </div>
@@ -3456,25 +3479,26 @@ function renderCategoriasView() {
     const budgetCents = Number(cat.budgetCents) || 0;
     const pct = budgetCents > 0 ? Math.min(100, Math.round((spentCents / budgetCents) * 100)) : (spentCents > 0 ? 100 : 0);
     const rulesHtml = (cat.rules || []).length > 0
-      ? (cat.rules || []).map(r => `<span class="rule-badge">${r}</span>`).join(' ')
+      ? (cat.rules || []).map(r => `<span class="rule-badge">${esc(r)}</span>`).join(' ')
       : `<span style="font-size:11px; color:var(--text-muted);">Sem regras automáticas</span>`;
+    const safeCatCol = safeCssColor(cat.color);
 
     return `
       <div class="card" style="${cat.archived ? 'opacity:0.65;' : ''}">
         <div class="card-header-row" style="gap:10px;">
           <div style="display:flex; align-items:center; gap:8px; min-width:0; flex:1;">
-            <span class="cat-dot" style="background:${cat.color}; width:10px; height:10px; flex-shrink:0;"></span>
-            <span style="font-weight:600; overflow:hidden; text-overflow:ellipsis;">${cat.name}</span>
+            <span class="cat-dot" style="background:${safeCatCol}; width:10px; height:10px; flex-shrink:0;"></span>
+            <span style="font-weight:600; overflow:hidden; text-overflow:ellipsis;">${esc(cat.name)}</span>
             ${cat.archived ? `<span class="tag-pill">Arquivada</span>` : ''}
           </div>
           <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
             <span class="cat-pct-badge sensitive-val">${fmtBRL(spentCents)}</span>
-            <button class="btn-icon-edit" data-edit-cat="${cat.id}">✎ Editar</button>
+            <button class="btn-icon-edit" data-edit-cat="${esc(cat.id)}">✎ Editar</button>
           </div>
         </div>
         <div class="vs-prev sensitive-val">Teto mensal: ${fmtBRL(budgetCents)}</div>
         <div class="cat-progress-track" style="margin:10px 0 12px;">
-          <div class="cat-progress-fill" style="width:${spentCents > 0 ? Math.max(6, pct) : 0}%; background:${cat.color};"></div>
+          <div class="cat-progress-fill" style="width:${spentCents > 0 ? Math.max(6, pct) : 0}%; background:${safeCatCol};"></div>
         </div>
         <div style="display:flex; flex-wrap:wrap; gap:5px; align-items:center;">
           ${rulesHtml}
@@ -3576,23 +3600,24 @@ function renderMetasView() {
 
   const html = state.goals.map(g => {
     const pct = g.targetCents > 0 ? Math.min(100, Math.round((g.currentCents / g.targetCents) * 100)) : 0;
-    const deadlineText = g.deadline ? `Prazo · ${g.deadline}` : 'Sem prazo definido';
+    const deadlineText = g.deadline ? `Prazo · ${esc(g.deadline)}` : 'Sem prazo definido';
+    const safeGoalCol = safeCssColor(g.color, '#38b6ff');
     return `
       <div class="card">
         <div class="card-header-row">
           <div style="min-width:0;">
-            <span style="font-weight:600; display:block;">${g.title}</span>
+            <span style="font-weight:600; display:block;">${esc(g.title)}</span>
             <span style="font-size:11.5px; color:var(--text-muted);">${deadlineText}</span>
           </div>
           <span class="cat-pct-badge">${pct}%</span>
         </div>
         <div class="big-currency sensitive-val" style="font-size:22px; margin-top:8px;">${fmtBRL(g.currentCents)} <span class="currency-sub">/ ${fmtBRL(g.targetCents)}</span></div>
         <div class="cat-progress-track" style="margin:14px 0;">
-          <div class="cat-progress-fill" style="width:${pct > 0 ? Math.max(3, pct) : 0}%; background:${g.color || '#38b6ff'};"></div>
+          <div class="cat-progress-fill" style="width:${pct > 0 ? Math.max(3, pct) : 0}%; background:${safeGoalCol};"></div>
         </div>
         <div style="display:flex; gap:8px;">
-          <button type="button" class="btn-secondary" style="flex:1;" data-aporte-goal="${g.id}">+ Registrar Aporte</button>
-          <button type="button" class="btn-secondary" data-edit-goal="${g.id}" aria-label="Editar meta ${g.title}">Editar</button>
+          <button type="button" class="btn-secondary" style="flex:1;" data-aporte-goal="${esc(g.id)}">+ Registrar Aporte</button>
+          <button type="button" class="btn-secondary" data-edit-goal="${esc(g.id)}" aria-label="Editar meta ${esc(g.title)}">Editar</button>
         </div>
       </div>
     `;
@@ -3736,17 +3761,17 @@ function renderPatrimonioView() {
         return `
           <tr>
             <td>
-              <div style="font-weight:600;">${a.name}</div>
-              <div style="font-size:11px; color:var(--text-muted);">${a.institution || 'Instituição'} · ${a.liquidity || 'Diária'}</div>
+              <div style="font-weight:600;">${esc(a.name)}</div>
+              <div style="font-size:11px; color:var(--text-muted);">${esc(a.institution || 'Instituição')} · ${esc(a.liquidity || 'Diária')}</div>
             </td>
             <td>
               <span style="display:inline-flex; align-items:center; gap:6px;">
-                <span class="cat-dot" style="background:${col};"></span>
-                ${a.category}
+                <span class="cat-dot" style="background:${safeCssColor(col, '#49b6eb')};"></span>
+                ${esc(a.category)}
               </span>
             </td>
             <td>
-              <button class="cdb-badge" data-quick-cdb="${a.id}" title="Clique para alterar a % do CDI / CDB">
+              <button class="cdb-badge" data-quick-cdb="${esc(a.id)}" title="Clique para alterar a % do CDI / CDB">
                 ${cdbPct}% CDI ✎
               </button>
               ${tierNote}
@@ -3761,8 +3786,8 @@ function renderPatrimonioView() {
             </td>
             <td style="text-align:right;">
               <div style="display:flex; gap:6px; justify-content:flex-end;">
-                <button class="btn-secondary" data-aporte-asset="${a.id}">+ Aporte</button>
-                <button class="btn-icon-edit" data-edit-asset="${a.id}">Editar</button>
+                <button class="btn-secondary" data-aporte-asset="${esc(a.id)}">+ Aporte</button>
+                <button class="btn-icon-edit" data-edit-asset="${esc(a.id)}">Editar</button>
               </div>
             </td>
           </tr>
@@ -4386,10 +4411,10 @@ function renderContasView() {
     return `
       <div class="card">
         <div class="card-header-row" style="gap:10px;">
-          <span style="font-weight:600;">${a.name}</span>
+          <span style="font-weight:600;">${esc(a.name)}</span>
           <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
-            <span class="cat-pct-badge">${a.type}</span>
-            <button class="btn-icon-edit" data-edit-acc="${a.id}">✎ Editar</button>
+            <span class="cat-pct-badge">${esc(a.type)}</span>
+            <button class="btn-icon-edit" data-edit-acc="${esc(a.id)}">✎ Editar</button>
           </div>
         </div>
         <div class="big-currency sensitive-val" style="font-size:22px; margin-top:8px;">
@@ -4897,9 +4922,9 @@ function renderQuickCategoryChips(selectedId) {
   document.getElementById('tx-category').value = activeId;
 
   chipsWrap.innerHTML = sortedCats.map(c => `
-    <button type="button" class="cat-chip ${c.id === activeId ? 'selected' : ''}" data-quick-cat="${c.id}">
-      <span class="cat-dot" style="background:${c.color};" aria-hidden="true"></span>
-      ${c.name}
+    <button type="button" class="cat-chip ${c.id === activeId ? 'selected' : ''}" data-quick-cat="${esc(c.id)}">
+      <span class="cat-dot" style="background:${safeCssColor(c.color)};" aria-hidden="true"></span>
+      ${esc(c.name)}
     </button>
   `).join('');
 
@@ -4928,7 +4953,7 @@ function openTransactionModal(preselectedAccountId = null, editTxId = null) {
   manualCategoryPicked = Boolean(editTx);
   const accSelect = document.getElementById('tx-account');
   accSelect.innerHTML = state.accounts
-    .map(a => `<option value="${a.id}">${a.name}</option>`)
+    .map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`)
     .join('');
 
   document.getElementById('tx-id').value = editTx ? editTx.id : '';
@@ -5002,7 +5027,7 @@ function updateInstallmentUI() {
 function openProfileModal() {
   const userSel = document.getElementById('prof-user-select');
   userSel.innerHTML = usersIndex.users
-    .map(u => `<option value="${u.id}" ${u.id === usersIndex.activeUserId ? 'selected' : ''}>${u.name}</option>`)
+    .map(u => `<option value="${esc(u.id)}" ${u.id === usersIndex.activeUserId ? 'selected' : ''}>${esc(u.name)}</option>`)
     .join('');
   document.getElementById('prof-new-user').value = '';
   document.getElementById('prof-name').value = state.profile.name;
@@ -5771,12 +5796,12 @@ function openRecurrenceModal(recId = null) {
   const catSelect = document.getElementById('rec-category');
   if (catSelect) {
     const activeCats = state.categories.filter(c => !c.archived);
-    catSelect.innerHTML = activeCats.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    catSelect.innerHTML = activeCats.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
   }
   const accSelect = document.getElementById('rec-account');
   if (accSelect) {
     accSelect.innerHTML = state.accounts
-      .map(a => `<option value="${a.id}">${a.name} (${a.type})</option>`)
+      .map(a => `<option value="${esc(a.id)}">${esc(a.name)} (${esc(a.type)})</option>`)
       .join('');
     accSelect.value = rec?.accountId || state.lastUsedAccountId || state.accounts[0]?.id || '';
   }
@@ -6132,10 +6157,7 @@ function updateAuthHeaderBadge() {
   const dot = document.getElementById('auth-status-dot');
   const label = document.getElementById('auth-btn-label');
   const adminLink = document.getElementById('admin-panel-link');
-  const isAdminUser = Boolean(
-    cloudSessionUser &&
-    (cloudSessionUser.isAdmin || String(cloudSessionUser.email || '').trim().toLowerCase() === 'thulioggomes@gmail.com')
-  );
+  const isAdminUser = Boolean(cloudSessionUser && cloudSessionUser.isAdmin === true);
   if (adminLink) {
     adminLink.style.display = isAdminUser ? 'inline-flex' : 'none';
   }
@@ -6486,11 +6508,14 @@ function bindAuthEvents() {
 
 let syncTimer = null;
 async function syncStateToCloud() {
+  if (!cloudSessionUser || !cloudSessionUser.id || usersIndex.activeUserId !== cloudSessionUser.id) {
+    return;
+  }
   try {
     await fetch('/api/state', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: usersIndex.activeUserId, state })
+      body: JSON.stringify({ state })
     });
   } catch {
     // Fallback silencioso para localStorage
@@ -6515,7 +6540,12 @@ async function hydrateFromCloud() {
         }
         updateAuthHeaderBadge();
         setAuthGateVisibility(false);
-      } else if (!cloudSessionUser) {
+      } else {
+        cloudSessionUser = null;
+        if (typeof window !== 'undefined') {
+          window.localStorage.removeItem(AUTH_SESSION_STORAGE_KEY);
+        }
+        updateAuthHeaderBadge();
         setAuthGateVisibility(true);
         return;
       }
@@ -6523,7 +6553,7 @@ async function hydrateFromCloud() {
 
     if (!cloudSessionUser) return;
 
-    const res = await fetch('/api/state?userId=' + encodeURIComponent(usersIndex.activeUserId));
+    const res = await fetch('/api/state');
     if (!res.ok) return;
     const data = await res.json();
     if (data && data.ok) {

@@ -1,7 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getPrisma } from '@/lib/prisma';
+import { SESSION_COOKIE, verifyAuthenticatedSession } from '@/lib/session';
 
 const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1/interactions';
 const GEMINI_MODEL = 'gemini-4-hydrogen';
+
+const ALLOWED_MODES = new Set(['extract', 'categorize']);
+const ALLOWED_MIME_TYPES = new Set([
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'text/markdown',
+  'text/plain',
+]);
+const MAX_MERCHANTS = 150;
+const MAX_RAW_TEXT_CHARS = 120_000;
+const MAX_BASE64_CHARS = 8_500_000; // ~6 MB file ceiling
 
 interface CategoryOption {
   id: string;
@@ -10,12 +25,27 @@ interface CategoryOption {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const mode = String(body.mode || 'extract');
-    const apiKey = String(
-      body.apiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || ''
-    ).trim();
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json({ ok: false, error: 'Payload inválido.' }, { status: 400 });
+    }
 
+    const userProvidedKey = String((body as Record<string, unknown>).apiKey || '').trim();
+    const serverKey = String(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '').trim();
+
+    // Exige sessão autenticada quando o banco está ativo ou quando a chamada consome a chave do servidor
+    const prisma = getPrisma();
+    if (prisma || (!userProvidedKey && serverKey)) {
+      const auth = await verifyAuthenticatedSession(req.cookies.get(SESSION_COOKIE)?.value);
+      if (auth.status !== 'ok') {
+        return NextResponse.json(
+          { ok: false, error: 'Faça login para utilizar a importação inteligente com IA.' },
+          { status: 401 }
+        );
+      }
+    }
+
+    const apiKey = userProvidedKey || serverKey;
     if (!apiKey) {
       return NextResponse.json(
         {
@@ -28,11 +58,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const categories: CategoryOption[] = Array.isArray(body.categories)
-      ? body.categories.map((c: Record<string, unknown>) => ({
-          id: String(c.id || ''),
-          name: String(c.name || ''),
-        }))
+    const mode = String((body as Record<string, unknown>).mode || 'extract');
+    if (!ALLOWED_MODES.has(mode)) {
+      return NextResponse.json({ ok: false, error: 'Modo inválido.' }, { status: 400 });
+    }
+
+    const rawCategories = (body as Record<string, unknown>).categories;
+    const categories: CategoryOption[] = Array.isArray(rawCategories)
+      ? rawCategories.slice(0, 60).map((c) => {
+          const item = (c && typeof c === 'object' ? c : {}) as Record<string, unknown>;
+          return {
+            id: String(item.id || '').slice(0, 64),
+            name: String(item.name || '').slice(0, 80),
+          };
+        })
       : [];
 
     const categoryListText = categories
@@ -41,7 +80,13 @@ export async function POST(req: NextRequest) {
 
     // MODO 1: Categorização inteligente em lote para estabelecimentos desconhecidos do CSV
     if (mode === 'categorize') {
-      const merchants: string[] = Array.isArray(body.merchants) ? body.merchants : [];
+      const rawMerchants = (body as Record<string, unknown>).merchants;
+      const merchants: string[] = Array.isArray(rawMerchants)
+        ? rawMerchants
+            .slice(0, MAX_MERCHANTS)
+            .map((m) => String(m || '').trim().slice(0, 120))
+            .filter(Boolean)
+        : [];
       if (merchants.length === 0) {
         return NextResponse.json({ ok: true, mappings: {} });
       }
@@ -91,9 +136,9 @@ Retorne um objeto JSON com a propriedade "items", onde cada item possui "merchan
       });
 
       if (!geminiRes.ok) {
-        const errText = await geminiRes.text();
+        console.error('[Farol Import] Gemini categorize HTTP error:', geminiRes.status);
         return NextResponse.json(
-          { ok: false, error: `Erro na API Gemini (${geminiRes.status}): ${errText.slice(0, 220)}` },
+          { ok: false, error: `Falha ao consultar API Gemini (${geminiRes.status}).` },
           { status: 502 }
         );
       }
@@ -113,16 +158,23 @@ Retorne um objeto JSON com a propriedade "items", onde cada item possui "merchan
     }
 
     // MODO 2: Extração Multimodal OCR de Fatura em PDF, Imagem ou Texto/Markdown (.pdf, .png, .jpg, .webp, .md)
-    const fileDataBase64 = String(body.fileDataBase64 || '');
-    const rawTextContent = String(body.rawText || '');
-    const mimeType = String(body.mimeType || 'application/pdf');
-    const defaultYear = String(body.defaultYear || new Date().getFullYear());
+    const fileDataBase64 = String((body as Record<string, unknown>).fileDataBase64 || '');
+    const rawTextContent = String((body as Record<string, unknown>).rawText || '');
+    const mimeType = String((body as Record<string, unknown>).mimeType || 'application/pdf').trim().toLowerCase();
+    const rawYear = String((body as Record<string, unknown>).defaultYear || '').trim();
+    const defaultYear = /^\d{4}$/.test(rawYear) ? rawYear : String(new Date().getFullYear());
 
     if (!fileDataBase64 && !rawTextContent) {
-      return NextResponse.json(
-        { ok: false, error: 'Arquivo vazio ou não enviado.' },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: 'Arquivo vazio ou não enviado.' }, { status: 400 });
+    }
+    if (!ALLOWED_MIME_TYPES.has(mimeType)) {
+      return NextResponse.json({ ok: false, error: 'Tipo de arquivo não suportado.' }, { status: 400 });
+    }
+    if (rawTextContent.length > MAX_RAW_TEXT_CHARS) {
+      return NextResponse.json({ ok: false, error: 'Texto da fatura excede o limite de 120 KB.' }, { status: 413 });
+    }
+    if (fileDataBase64.length > MAX_BASE64_CHARS) {
+      return NextResponse.json({ ok: false, error: 'Arquivo excede o limite de 6 MB.' }, { status: 413 });
     }
 
     const isPdf = mimeType === 'application/pdf';
@@ -130,7 +182,7 @@ Retorne um objeto JSON com a propriedade "items", onde cada item possui "merchan
     const mediaBlock = isTextMd
       ? {
           type: 'text',
-          text: `Conteúdo da fatura em Markdown/Texto:\n\n${rawTextContent || Buffer.from(fileDataBase64, 'base64').toString('utf8')}`,
+          text: `Conteúdo da fatura em Markdown/Texto:\n\n${rawTextContent || Buffer.from(fileDataBase64, 'base64').toString('utf8').slice(0, MAX_RAW_TEXT_CHARS)}`,
         }
       : isPdf
         ? {
@@ -211,9 +263,9 @@ ${categoryListText}`;
     });
 
     if (!geminiRes.ok) {
-      const errText = await geminiRes.text();
+      console.error('[Farol Import] Gemini extract HTTP error:', geminiRes.status);
       return NextResponse.json(
-        { ok: false, error: `Falha ao processar documento na API Gemini (${geminiRes.status}): ${errText.slice(0, 240)}` },
+        { ok: false, error: `Falha ao processar documento na API Gemini (${geminiRes.status}).` },
         { status: 502 }
       );
     }
@@ -227,8 +279,9 @@ ${categoryListText}`;
       items: Array.isArray(parsed.items) ? parsed.items : [],
     });
   } catch (err) {
+    console.error('[Farol Import] Error:', err);
     return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : 'Erro interno ao processar fatura.' },
+      { ok: false, error: 'Erro interno ao processar fatura.' },
       { status: 500 }
     );
   }

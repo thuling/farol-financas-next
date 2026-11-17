@@ -249,14 +249,14 @@ export function AdminDashboard({
           <h1 className="admin-gate-title">Painel Administrativo Privado</h1>
           {mode === 'unauthenticated' && (
             <p className="admin-gate-desc">
-              Esta área mostra contas cadastradas e métricas de cliques do Farol Finanças. Entre com o e-mail autorizado{' '}
-              <strong>{adminEmail}</strong> e valide o código OTP para continuar.
+              Esta área mostra contas cadastradas e métricas de cliques do Farol Finanças. Entre com a conta
+              administradora autorizada e valide o código OTP para continuar.
             </p>
           )}
           {mode === 'forbidden' && (
             <p className="admin-gate-desc">
-              A conta conectada atualmente (<strong>{currentEmail || 'desconhecida'}</strong>) não tem permissão de administrador.
-              Este painel está vinculado exclusivamente ao e-mail <strong>{adminEmail}</strong>.
+              A conta conectada atualmente (<strong>{currentEmail || 'desconhecida'}</strong>) não tem permissão de administrador
+              para acessar este painel privado.
             </p>
           )}
           {mode === 'no_database' && (

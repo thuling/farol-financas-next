@@ -12,6 +12,9 @@ export async function ensureDbSchema(prisma: PrismaClient): Promise<void> {
         "name" TEXT NOT NULL,
         "passwordHash" TEXT NOT NULL,
         "verified" BOOLEAN NOT NULL DEFAULT false,
+        "sessionVersion" INTEGER NOT NULL DEFAULT 1,
+        "failedLoginAttempts" INTEGER NOT NULL DEFAULT 0,
+        "lockedUntil" TIMESTAMP(3),
         "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT "UserAccount_pkey" PRIMARY KEY ("id")
@@ -19,6 +22,15 @@ export async function ensureDbSchema(prisma: PrismaClient): Promise<void> {
     `);
     await prisma.$executeRawUnsafe(`
       ALTER TABLE "UserAccount" ADD COLUMN IF NOT EXISTS "verified" BOOLEAN NOT NULL DEFAULT false;
+    `);
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "UserAccount" ADD COLUMN IF NOT EXISTS "sessionVersion" INTEGER NOT NULL DEFAULT 1;
+    `);
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "UserAccount" ADD COLUMN IF NOT EXISTS "failedLoginAttempts" INTEGER NOT NULL DEFAULT 0;
+    `);
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "UserAccount" ADD COLUMN IF NOT EXISTS "lockedUntil" TIMESTAMP(3);
     `);
     await prisma.$executeRawUnsafe(`
       CREATE UNIQUE INDEX IF NOT EXISTS "UserAccount_email_key" ON "UserAccount"("email");
@@ -53,7 +65,7 @@ export async function ensureDbSchema(prisma: PrismaClient): Promise<void> {
         "salaryDay" INTEGER NOT NULL DEFAULT 5,
         "monthlyBudgetCents" INTEGER NOT NULL DEFAULT 0,
         "emergencyGoalCents" INTEGER NOT NULL DEFAULT 33000,
-        "theme" TEXT NOT NULL DEFAULT 'dark',
+        "theme" TEXT NOT NULL DEFAULT 'light',
         "hideValues" BOOLEAN NOT NULL DEFAULT false,
         "lastUsedAccountId" TEXT,
         "stateJson" TEXT NOT NULL,

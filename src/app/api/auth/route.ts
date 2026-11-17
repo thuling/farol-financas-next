@@ -3,11 +3,41 @@ import { randomBytes, randomInt, scryptSync, timingSafeEqual, createHmac } from 
 import nodemailer from 'nodemailer';
 import { getPrisma } from '@/lib/prisma';
 import { ensureDbSchema } from '@/lib/db-init';
-import { SESSION_COOKIE, getSessionSecret, signSession, verifySession, isAdminEmail } from '@/lib/session';
+import {
+  SESSION_COOKIE,
+  SESSION_TTL_MS,
+  getSessionSecret,
+  isSessionSecretConfigured,
+  signSession,
+  verifySession,
+  verifyAuthenticatedSession,
+  isAdminEmail,
+} from '@/lib/session';
 
 const OTP_EXPIRATION_MS = 10 * 60 * 1000; // 10 minutos
 const OTP_COOLDOWN_MS = 55 * 1000;       // 60s no cliente (55s de tolerância no servidor)
 const OTP_MAX_ATTEMPTS = 3;
+const LOGIN_MAX_FAILURES = 5;
+const LOGIN_LOCK_MS = 5 * 60 * 1000;
+const MAX_STATE_SEED_BYTES = 2 * 1024 * 1024;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function escapeHtml(val: unknown): string {
+  return String(val ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function sanitizeName(val: unknown, fallback: string): string {
+  const cleaned = String(val ?? '')
+    .replace(/[\u0000-\u001F\u007F]/g, '')
+    .trim()
+    .slice(0, 80);
+  return cleaned || fallback.slice(0, 80);
+}
 
 function getSecret(): string {
   return getSessionSecret();
@@ -129,10 +159,12 @@ async function sendOtpEmail({
       ? `${code} é o seu código para ativar sua conta no Farol Finanças`
       : `${code} é o seu código de acesso em 2 etapas — Farol Finanças`;
 
+  const safeName = escapeHtml(sanitizeName(userName, 'usuário'));
+
   const html = `
     <div style="font-family:'Plus Jakarta Sans',Arial,sans-serif;max-width:480px;margin:0 auto;background:#0d1822;color:#f3f6f8;padding:32px 28px;border-radius:16px;border:1px solid rgba(73,182,235,0.25);">
       <div style="font-size:13px;font-weight:700;color:#49b6eb;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:8px;">Farol Finanças · Segurança</div>
-      <h2 style="margin:0 0 12px;font-size:20px;color:#ffffff;">Olá, ${userName}!</h2>
+      <h2 style="margin:0 0 12px;font-size:20px;color:#ffffff;">Olá, ${safeName}!</h2>
       <p style="font-size:14px;line-height:1.55;color:#9bb0bd;margin:0 0 22px;">
         ${
           purpose === 'register'
@@ -169,9 +201,10 @@ async function sendOtpEmail({
       });
       return { deliveredByEmail: true };
     } catch (err) {
+      console.error('[Farol Auth] SMTP send error:', err);
       return {
         deliveredByEmail: false,
-        providerNote: `Falha no envio via SMTP (${err instanceof Error ? err.message : 'erro desconhecido'}).`,
+        providerNote: 'Falha temporária ao enviar código via SMTP.',
       };
     }
   }
@@ -196,14 +229,16 @@ async function sendOtpEmail({
         return { deliveredByEmail: true };
       }
       const errBody = await res.text();
+      console.error('[Farol Auth] Resend error:', res.status, errBody.slice(0, 200));
       return {
         deliveredByEmail: false,
-        providerNote: `Falha no envio via Resend (${res.status}): ${errBody.slice(0, 140)}`,
+        providerNote: 'Falha temporária ao enviar código por e-mail.',
       };
     } catch (err) {
+      console.error('[Farol Auth] Resend network error:', err);
       return {
         deliveredByEmail: false,
-        providerNote: err instanceof Error ? err.message : 'Falha de rede ao enviar e-mail via Resend.',
+        providerNote: 'Falha de comunicação ao enviar e-mail de verificação.',
       };
     }
   }
@@ -271,10 +306,33 @@ async function issueAndDeliverOtp(
   });
 }
 
+async function checkOtpCooldown(
+  prisma: NonNullable<ReturnType<typeof getPrisma>>,
+  userId: string
+): Promise<NextResponse | null> {
+  const lastOtp = await prisma.otpVerification.findFirst({
+    where: { userId },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (!lastOtp) return null;
+  const elapsedMs = Date.now() - new Date(lastOtp.createdAt).getTime();
+  if (elapsedMs < OTP_COOLDOWN_MS) {
+    const waitSec = Math.max(1, Math.ceil((60000 - elapsedMs) / 1000));
+    return NextResponse.json(
+      {
+        ok: false,
+        remainingCooldown: waitSec,
+        error: `Aguarde ${waitSec}s antes de solicitar um novo código.`,
+      },
+      { status: 429 }
+    );
+  }
+  return null;
+}
+
 export async function GET(req: NextRequest) {
   const prisma = getPrisma();
   const token = req.cookies.get(SESSION_COOKIE)?.value;
-  const session = verifySession(token);
 
   if (!prisma) {
     return NextResponse.json({
@@ -286,8 +344,8 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    await ensureDbSchema(prisma);
-    if (!session) {
+    const auth = await verifyAuthenticatedSession(token);
+    if (auth.status !== 'ok') {
       return NextResponse.json({
         ok: true,
         dbConnected: true,
@@ -296,17 +354,7 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const account = await prisma.userAccount.findUnique({ where: { id: session.id } });
-    if (!account || !account.verified) {
-      return NextResponse.json({
-        ok: true,
-        dbConnected: true,
-        authenticated: false,
-        user: null,
-      });
-    }
-
-    const workspace = await prisma.userWorkspace.findUnique({ where: { id: account.id } });
+    const workspace = await prisma.userWorkspace.findUnique({ where: { id: auth.user.id } });
     const parsedState = workspace ? JSON.parse(workspace.stateJson) : null;
 
     return NextResponse.json({
@@ -314,19 +362,20 @@ export async function GET(req: NextRequest) {
       dbConnected: true,
       authenticated: true,
       user: {
-        id: account.id,
-        email: account.email,
-        name: account.name,
-        isAdmin: isAdminEmail(account.email),
+        id: auth.user.id,
+        email: auth.user.email,
+        name: auth.user.name,
+        isAdmin: isAdminEmail(auth.user.email),
       },
       state: parsedState,
     });
   } catch (err) {
+    console.error('[Farol Auth GET] Error:', err);
     return NextResponse.json({
       ok: false,
       dbConnected: false,
       authenticated: false,
-      error: err instanceof Error ? err.message : 'Auth check error',
+      error: 'Falha ao validar sessão.',
     });
   }
 }
@@ -336,9 +385,30 @@ export async function POST(req: NextRequest) {
   const action = String(body.action || '');
 
   if (action === 'logout') {
+    const prisma = getPrisma();
+    const currentSession = verifySession(req.cookies.get(SESSION_COOKIE)?.value);
+    if (prisma && currentSession?.id) {
+      await prisma.userAccount.update({
+        where: { id: currentSession.id },
+        data: { sessionVersion: { increment: 1 } },
+      }).catch(() => {});
+    }
     const res = NextResponse.json({ ok: true });
-    res.cookies.set(SESSION_COOKIE, '', { path: '/', maxAge: 0 });
+    res.cookies.set(SESSION_COOKIE, '', {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      maxAge: 0,
+    });
     return res;
+  }
+
+  if (!isSessionSecretConfigured()) {
+    return NextResponse.json(
+      { ok: false, error: 'AUTH_SECRET não configurada no servidor.' },
+      { status: 503 }
+    );
   }
 
   const prisma = getPrisma();
@@ -354,23 +424,23 @@ export async function POST(req: NextRequest) {
 
   try {
     await ensureDbSchema(prisma);
-    const email = String(body.email || '').trim().toLowerCase();
+    const email = String(body.email || '').trim().toLowerCase().slice(0, 160);
 
     // ============================================================
     // 1. VERIFICAÇÃO DO CÓDIGO OTP DE 6 DÍGITOS (CADASTRO OU LOGIN 2FA)
     // ============================================================
     if (action === 'verify_otp') {
       const code = String(body.code || '').replace(/\D/g, '').trim();
-      if (!email || code.length !== 6) {
+      if (!EMAIL_REGEX.test(email) || code.length !== 6) {
         return NextResponse.json(
-          { ok: false, error: 'Digite os 6 dígitos do código de verificação.' },
+          { ok: false, error: 'Digite um e-mail válido e os 6 dígitos do código de verificação.' },
           { status: 400 }
         );
       }
 
       const account = await prisma.userAccount.findUnique({ where: { email } });
       if (!account) {
-        return NextResponse.json({ ok: false, error: 'Conta não encontrada.' }, { status: 404 });
+        return NextResponse.json({ ok: false, error: 'Código inválido ou expirado.' }, { status: 401 });
       }
 
       const activeOtp = await prisma.otpVerification.findFirst({
@@ -455,36 +525,51 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      if (!parsedState && activeOtp.purpose !== 'register' && body.state && typeof body.state === 'object' && hasCustomizedServerState(body.state)) {
-        parsedState = body.state;
-        parsedState.userEmail = account.email;
-        if (parsedState.profile) parsedState.profile.name = account.name;
-        const profile = parsedState.profile || {};
-        workspace = await prisma.userWorkspace.upsert({
-          where: { id: account.id },
-          create: {
-            id: account.id,
-            email: account.email,
-            name: account.name,
-            plan: String(profile.plan || 'Plano pessoal'),
-            monthlySalaryCents: Math.round(Number(profile.monthlySalaryCents) || 0),
-            salaryDay: Math.min(28, Math.max(1, Number(profile.salaryDay) || 5)),
-            monthlyBudgetCents: Math.round(Number(profile.monthlyBudgetCents) || 0),
-            emergencyGoalCents: Math.max(0, Math.round(Number(profile.emergencyGoalCents) || 0)),
-            theme: String(parsedState.theme || 'dark'),
-            hideValues: Boolean(parsedState.privacyMode ?? parsedState.hideValues),
-            lastUsedAccountId: parsedState.lastUsedAccountId || null,
-            stateJson: JSON.stringify(parsedState),
-          },
-          update: {
-            email: account.email,
-            name: account.name,
-            stateJson: JSON.stringify(parsedState),
-          },
-        });
+      if (
+        !parsedState &&
+        activeOtp.purpose !== 'register' &&
+        body.state &&
+        typeof body.state === 'object' &&
+        !Array.isArray(body.state) &&
+        hasCustomizedServerState(body.state)
+      ) {
+        const seedJson = JSON.stringify(body.state);
+        if (seedJson.length <= MAX_STATE_SEED_BYTES) {
+          parsedState = body.state;
+          parsedState.userEmail = account.email;
+          if (parsedState.profile) parsedState.profile.name = account.name;
+          const profile = parsedState.profile || {};
+          workspace = await prisma.userWorkspace.upsert({
+            where: { id: account.id },
+            create: {
+              id: account.id,
+              email: account.email,
+              name: account.name,
+              plan: String(profile.plan || 'Plano pessoal').slice(0, 80),
+              monthlySalaryCents: Math.round(Number(profile.monthlySalaryCents) || 0),
+              salaryDay: Math.min(28, Math.max(1, Number(profile.salaryDay) || 5)),
+              monthlyBudgetCents: Math.round(Number(profile.monthlyBudgetCents) || 0),
+              emergencyGoalCents: Math.max(0, Math.round(Number(profile.emergencyGoalCents) || 0)),
+              theme: parsedState.theme === 'dark' ? 'dark' : 'light',
+              hideValues: Boolean(parsedState.privacyMode ?? parsedState.hideValues),
+              lastUsedAccountId: typeof parsedState.lastUsedAccountId === 'string' ? parsedState.lastUsedAccountId.slice(0, 64) : null,
+              stateJson: JSON.stringify(parsedState),
+            },
+            update: {
+              email: account.email,
+              name: account.name,
+              stateJson: JSON.stringify(parsedState),
+            },
+          });
+        }
       }
 
-      const token = signSession({ id: account.id, email: account.email, name: account.name });
+      const token = signSession({
+        id: account.id,
+        email: account.email,
+        name: account.name,
+        sv: account.sessionVersion,
+      });
       const res = NextResponse.json({
         ok: true,
         step: 'authenticated',
@@ -500,8 +585,9 @@ export async function POST(req: NextRequest) {
       res.cookies.set(SESSION_COOKIE, token, {
         httpOnly: true,
         sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
         path: '/',
-        maxAge: 60 * 60 * 24 * 90,
+        maxAge: Math.floor(SESSION_TTL_MS / 1000),
       });
       return res;
     }
@@ -510,33 +596,19 @@ export async function POST(req: NextRequest) {
     // 2. REENVIO DE CÓDIGO OTP COM COOLDOWN DE 60 SEGUNDOS
     // ============================================================
     if (action === 'resend_otp') {
-      if (!email) {
-        return NextResponse.json({ ok: false, error: 'Informe o e-mail.' }, { status: 400 });
+      if (!EMAIL_REGEX.test(email)) {
+        return NextResponse.json({ ok: false, error: 'Informe um e-mail válido.' }, { status: 400 });
       }
       const account = await prisma.userAccount.findUnique({ where: { email } });
       if (!account) {
-        return NextResponse.json({ ok: false, error: 'Conta não encontrada.' }, { status: 404 });
+        return NextResponse.json(
+          { ok: false, error: 'Não foi possível reenviar o código para este e-mail.' },
+          { status: 400 }
+        );
       }
 
-      const lastOtp = await prisma.otpVerification.findFirst({
-        where: { userId: account.id },
-        orderBy: { createdAt: 'desc' },
-      });
-
-      if (lastOtp) {
-        const elapsedMs = Date.now() - new Date(lastOtp.createdAt).getTime();
-        if (elapsedMs < OTP_COOLDOWN_MS) {
-          const waitSec = Math.ceil((60000 - elapsedMs) / 1000);
-          return NextResponse.json(
-            {
-              ok: false,
-              remainingCooldown: waitSec,
-              error: `Aguarde ${waitSec}s antes de solicitar um novo código.`,
-            },
-            { status: 429 }
-          );
-        }
-      }
+      const cooldownRes = await checkOtpCooldown(prisma, account.id);
+      if (cooldownRes) return cooldownRes;
 
       const purpose: 'register' | 'login' = account.verified ? 'login' : 'register';
       return issueAndDeliverOtp(prisma, account, purpose);
@@ -546,22 +618,27 @@ export async function POST(req: NextRequest) {
     // 3. CADASTRO (CRIA CONTA COM STATUS NÃO VERIFICADA + GERA OTP)
     // ============================================================
     const password = String(body.password || '');
-    const name = String(body.name || '').trim() || email.split('@')[0] || 'Minha Conta';
+    const name = sanitizeName(body.name, email.split('@')[0] || 'Minha Conta');
 
-    if (!email || !email.includes('@')) {
+    if (!EMAIL_REGEX.test(email)) {
       return NextResponse.json({ ok: false, error: 'Informe um e-mail válido.' }, { status: 400 });
-    }
-    if (password.length < 4) {
-      return NextResponse.json({ ok: false, error: 'A senha deve ter pelo menos 4 caracteres.' }, { status: 400 });
     }
 
     if (action === 'register') {
+      if (password.length < 8) {
+        return NextResponse.json({ ok: false, error: 'A senha deve ter pelo menos 8 caracteres.' }, { status: 400 });
+      }
       const existing = await prisma.userAccount.findUnique({ where: { email } });
       if (existing && existing.verified) {
         return NextResponse.json(
           { ok: false, error: 'Já existe uma conta ativa com este e-mail. Use a opção Fazer Login.' },
           { status: 409 }
         );
+      }
+
+      if (existing) {
+        const cooldownRes = await checkOtpCooldown(prisma, existing.id);
+        if (cooldownRes) return cooldownRes;
       }
 
       const account = existing
@@ -585,13 +662,47 @@ export async function POST(req: NextRequest) {
     // 4. LOGIN EM DUAS ETAPAS (VALIDA CREDENCIAIS + ENVIA OTP 2FA)
     // ============================================================
     if (action === 'login') {
+      if (!password) {
+        return NextResponse.json({ ok: false, error: 'E-mail ou senha incorretos.' }, { status: 401 });
+      }
       const account = await prisma.userAccount.findUnique({ where: { email } });
-      if (!account || !verifyPassword(password, account.passwordHash)) {
+      if (!account) {
+        return NextResponse.json({ ok: false, error: 'E-mail ou senha incorretos.' }, { status: 401 });
+      }
+
+      if (account.lockedUntil && account.lockedUntil > new Date()) {
+        return NextResponse.json(
+          { ok: false, error: 'Muitas tentativas incorretas. Aguarde alguns minutos para tentar novamente.' },
+          { status: 429 }
+        );
+      }
+
+      if (!verifyPassword(password, account.passwordHash)) {
+        const nextFailures = (account.failedLoginAttempts || 0) + 1;
+        const lockUntil = nextFailures >= LOGIN_MAX_FAILURES ? new Date(Date.now() + LOGIN_LOCK_MS) : null;
+        await prisma.userAccount.update({
+          where: { id: account.id },
+          data: {
+            failedLoginAttempts: lockUntil ? 0 : nextFailures,
+            lockedUntil: lockUntil,
+          },
+        }).catch(() => {});
+
         return NextResponse.json(
           { ok: false, error: 'E-mail ou senha incorretos.' },
           { status: 401 }
         );
       }
+
+      if (account.failedLoginAttempts > 0 || account.lockedUntil) {
+        await prisma.userAccount.update({
+          where: { id: account.id },
+          data: { failedLoginAttempts: 0, lockedUntil: null },
+        }).catch(() => {});
+      }
+
+      const cooldownRes = await checkOtpCooldown(prisma, account.id);
+      if (cooldownRes) return cooldownRes;
 
       const purpose: 'register' | 'login' = account.verified ? 'login' : 'register';
       return issueAndDeliverOtp(prisma, account, purpose);
@@ -599,8 +710,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: false, error: 'Ação inválida.' }, { status: 400 });
   } catch (err) {
+    console.error('[Farol Auth POST] Error:', err);
     return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : 'Erro interno de autenticação.' },
+      { ok: false, error: 'Erro interno de autenticação.' },
       { status: 500 }
     );
   }

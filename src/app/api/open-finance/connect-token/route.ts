@@ -1,8 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { SESSION_COOKIE, verifyAuthenticatedSession } from '@/lib/session';
 
 const PLUGGY_BASE = 'https://api.pluggy.ai';
 
 export async function POST(req: NextRequest) {
+  const auth = await verifyAuthenticatedSession(req.cookies.get(SESSION_COOKIE)?.value);
+  if (auth.status === 'no_database') {
+    return NextResponse.json({ ok: false, error: 'Banco de dados indisponível.' }, { status: 503 });
+  }
+  if (auth.status !== 'ok') {
+    return NextResponse.json({ ok: false, error: 'Não autenticado.' }, { status: 401 });
+  }
+
   const clientId = process.env.PLUGGY_CLIENT_ID;
   const clientSecret = process.env.PLUGGY_CLIENT_SECRET;
 
@@ -10,15 +19,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        error: 'PLUGGY_CLIENT_ID e PLUGGY_CLIENT_SECRET não configurados na Vercel.',
+        error: 'Integração Pluggy não configurada no servidor.',
       },
       { status: 501 }
     );
   }
 
   try {
-    const body = await req.json().catch(() => ({}));
-    const clientUserId = String(body.userId || 'user-default');
+    const clientUserId = auth.user.id;
 
     const authRes = await fetch(`${PLUGGY_BASE}/auth`, {
       method: 'POST',
@@ -27,7 +35,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (!authRes.ok) {
-      return NextResponse.json({ ok: false, error: 'Falha ao autenticar na Pluggy.' }, { status: 502 });
+      return NextResponse.json({ ok: false, error: 'Falha ao autenticar no provedor Open Finance.' }, { status: 502 });
     }
     const { apiKey } = (await authRes.json()) as { apiKey: string };
 
@@ -52,9 +60,7 @@ export async function POST(req: NextRequest) {
     const tokenData = (await tokenRes.json()) as { accessToken: string };
     return NextResponse.json({ ok: true, accessToken: tokenData.accessToken });
   } catch (err) {
-    return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : 'Erro interno' },
-      { status: 500 }
-    );
+    console.error('[Farol Pluggy Connect] Error:', err);
+    return NextResponse.json({ ok: false, error: 'Erro interno ao conectar Open Finance.' }, { status: 500 });
   }
 }

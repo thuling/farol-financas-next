@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { AdminDashboard } from '@/components/AdminDashboard';
-import { PRIMARY_ADMIN_EMAIL, SESSION_COOKIE, verifyAdminRequest } from '@/lib/session';
+import { SESSION_COOKIE, verifyAdminRequest } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +23,7 @@ export default async function AdminPage() {
     return (
       <AdminDashboard
         mode="forbidden"
-        adminEmail={PRIMARY_ADMIN_EMAIL}
+        adminEmail=""
         currentEmail={auth.currentEmail}
       />
     );
@@ -33,7 +33,7 @@ export default async function AdminPage() {
     return (
       <AdminDashboard
         mode="no_database"
-        adminEmail={PRIMARY_ADMIN_EMAIL}
+        adminEmail=""
       />
     );
   }
@@ -41,7 +41,7 @@ export default async function AdminPage() {
   return (
     <AdminDashboard
       mode="unauthenticated"
-      adminEmail={PRIMARY_ADMIN_EMAIL}
+      adminEmail=""
     />
   );
 }

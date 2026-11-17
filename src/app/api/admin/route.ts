@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPrisma } from '@/lib/prisma';
 import { ensureDbSchema } from '@/lib/db-init';
-import { SESSION_COOKIE, verifyAdminRequest, PRIMARY_ADMIN_EMAIL } from '@/lib/session';
+import { SESSION_COOKIE, verifyAdminRequest } from '@/lib/session';
+
+const ALLOWED_RANGES = new Set(['24h', '7d', '30d', 'all']);
 
 export interface AdminUserRow {
   id: string;
@@ -56,7 +58,7 @@ export async function GET(req: NextRequest) {
   }
   if (auth.status === 'forbidden') {
     return NextResponse.json(
-      { ok: false, error: `Acesso restrito a ${PRIMARY_ADMIN_EMAIL}. Conta atual: ${auth.currentEmail}` },
+      { ok: false, error: 'Acesso restrito ao administrador autorizado.' },
       { status: 403 }
     );
   }
@@ -72,7 +74,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Banco de dados indisponível.' }, { status: 503 });
   }
 
-  const range = req.nextUrl.searchParams.get('range') || '7d';
+  const rawRange = req.nextUrl.searchParams.get('range');
+  const range = rawRange ? rawRange.trim() : '7d';
+  if (!ALLOWED_RANGES.has(range)) {
+    return NextResponse.json({ ok: false, error: 'Parâmetro range inválido.' }, { status: 400 });
+  }
   const now = new Date();
   let sinceDate: Date | undefined;
   if (range === '24h') {
