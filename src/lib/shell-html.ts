@@ -79,8 +79,6 @@ export const FAROL_SHELL_HTML = `<!-- ==================== TELA INICIAL DE LOGIN
             </p>
           </div>
 
-          <div id="otp-fallback-box" class="otp-fallback-box" style="display:none;"></div>
-
           <div class="otp-digits-row" id="otp-digits-row">
             <input type="text" inputmode="numeric" maxlength="1" class="otp-digit-box" data-otp-idx="0" autocomplete="one-time-code" aria-label="Dígito 1" />
             <input type="text" inputmode="numeric" maxlength="1" class="otp-digit-box" data-otp-idx="1" aria-label="Dígito 2" />

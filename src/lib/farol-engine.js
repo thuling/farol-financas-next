@@ -4667,7 +4667,7 @@ function getEnteredOtpCode() {
   return getOtpBoxes().map(b => (b.value || '').trim()).join('');
 }
 
-function showOtpVerificationStep({ email, purpose, cooldownSeconds = 60, deliveredByEmail = false, fallbackCode = '' }) {
+function showOtpVerificationStep({ email, purpose, cooldownSeconds = 60 }) {
   const formGate = document.getElementById('form-auth-gate');
   const formOtp = document.getElementById('form-auth-otp');
   const titleEl = document.getElementById('auth-gate-title');
@@ -4675,7 +4675,6 @@ function showOtpVerificationStep({ email, purpose, cooldownSeconds = 60, deliver
   const emailDisplay = document.getElementById('otp-email-display');
   const targetEmailInput = document.getElementById('otp-target-email');
   const purposeInput = document.getElementById('otp-purpose');
-  const fallbackBox = document.getElementById('otp-fallback-box');
   const otpFeedback = document.getElementById('otp-feedback');
 
   if (formGate) formGate.style.display = 'none';
@@ -4690,26 +4689,6 @@ function showOtpVerificationStep({ email, purpose, cooldownSeconds = 60, deliver
       : 'Autenticação em 2 Etapas (2FA)';
   }
   if (otpFeedback) otpFeedback.style.display = 'none';
-
-  if (fallbackBox) {
-    if (!deliveredByEmail && fallbackCode) {
-      fallbackBox.style.display = 'block';
-      fallbackBox.innerHTML = `
-        <div>Código OTP gerado para <b>${email}</b>:</div>
-        <div style="font-size:20px; font-weight:800; letter-spacing:0.22em; color:#34d399; margin:4px 0;">${fallbackCode}</div>
-        <button type="button" id="btn-autofill-otp-demo" class="auth-gate-link" style="color:#34d399; font-size:11.5px;">
-          Preencher código automaticamente
-        </button>
-      `;
-      const autoBtn = document.getElementById('btn-autofill-otp-demo');
-      if (autoBtn) {
-        autoBtn.onclick = () => fillOtpBoxesWithCode(fallbackCode);
-      }
-    } else {
-      fallbackBox.style.display = 'none';
-      fallbackBox.innerHTML = '';
-    }
-  }
 
   clearAndFocusOtpBoxes();
   startOtpCooldownTimer(cooldownSeconds || 60);

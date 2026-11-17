@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes, randomInt, scryptSync, timingSafeEqual, createHmac } from 'node:crypto';
+import nodemailer from 'nodemailer';
 import { getPrisma } from '@/lib/prisma';
 import { ensureDbSchema } from '@/lib/db-init';
 
@@ -64,16 +65,21 @@ async function sendOtpEmail({
   userName,
   code,
   purpose,
-  resendApiKey,
 }: {
   toEmail: string;
   userName: string;
   code: string;
   purpose: 'register' | 'login';
-  resendApiKey?: string;
 }): Promise<{ deliveredByEmail: boolean; providerNote?: string }> {
-  const apiKey = (resendApiKey || process.env.RESEND_API_KEY || '').trim();
-  const fromAddress = process.env.EMAIL_FROM || 'Farol Finanças <onboarding@resend.dev>';
+  const smtpUser = (process.env.SMTP_USER || '').trim();
+  const smtpPass = (process.env.SMTP_PASS || '').trim();
+  const smtpHost = (process.env.SMTP_HOST || 'smtp.gmail.com').trim();
+  const smtpPort = Number(process.env.SMTP_PORT || 465);
+  const resendKey = (process.env.RESEND_API_KEY || '').trim();
+  const fromAddress =
+    process.env.EMAIL_FROM ||
+    (smtpUser ? `Farol Finanças <${smtpUser}>` : 'Farol Finanças <onboarding@resend.dev>');
+
   const subject =
     purpose === 'register'
       ? `${code} é o seu código para ativar sua conta no Farol Finanças`
@@ -99,12 +105,40 @@ async function sendOtpEmail({
     </div>
   `;
 
-  if (apiKey) {
+  // 1. Prioridade: SMTP Real (Gmail / Outlook / Servidor SMTP próprio — envia para qualquer destinatário)
+  if (smtpUser && smtpPass) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpPort === 465,
+        auth: {
+          user: smtpUser,
+          pass: smtpPass,
+        },
+      });
+      await transporter.sendMail({
+        from: fromAddress,
+        to: toEmail,
+        subject,
+        html,
+      });
+      return { deliveredByEmail: true };
+    } catch (err) {
+      return {
+        deliveredByEmail: false,
+        providerNote: `Falha no envio via SMTP (${err instanceof Error ? err.message : 'erro desconhecido'}).`,
+      };
+    }
+  }
+
+  // 2. Alternativa: Resend API (RESEND_API_KEY)
+  if (resendKey) {
     try {
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${apiKey}`,
+          Authorization: `Bearer ${resendKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -120,20 +154,77 @@ async function sendOtpEmail({
       const errBody = await res.text();
       return {
         deliveredByEmail: false,
-        providerNote: `Aviso do provedor de e-mail (${res.status}): ${errBody.slice(0, 120)}`,
+        providerNote: `Falha no envio via Resend (${res.status}): ${errBody.slice(0, 140)}`,
       };
     } catch (err) {
       return {
         deliveredByEmail: false,
-        providerNote: err instanceof Error ? err.message : 'Falha de rede no envio SMTP/Resend',
+        providerNote: err instanceof Error ? err.message : 'Falha de rede ao enviar e-mail via Resend.',
       };
     }
   }
 
   return {
     deliveredByEmail: false,
-    providerNote: 'Servidor de e-mail (RESEND_API_KEY) não configurado nas variáveis de ambiente.',
+    providerNote:
+      'Serviço de envio de e-mail ainda não configurado na Vercel (adicione SMTP_USER + SMTP_PASS ou RESEND_API_KEY em Environment Variables).',
   };
+}
+
+async function issueAndDeliverOtp(
+  prisma: NonNullable<ReturnType<typeof getPrisma>>,
+  account: { id: string; email: string; name: string },
+  purpose: 'register' | 'login'
+) {
+  await prisma.otpVerification.updateMany({
+    where: { userId: account.id, used: false },
+    data: { used: true },
+  });
+
+  const code = String(randomInt(100000, 1000000));
+  const otpRecord = await prisma.otpVerification.create({
+    data: {
+      userId: account.id,
+      email: account.email,
+      purpose,
+      codeHash: hashOtpCode(code, account.id),
+      attempts: 0,
+      used: false,
+      expiresAt: new Date(Date.now() + OTP_EXPIRATION_MS),
+    },
+  });
+
+  const delivery = await sendOtpEmail({
+    toEmail: account.email,
+    userName: account.name,
+    code,
+    purpose,
+  });
+
+  if (!delivery.deliveredByEmail) {
+    await prisma.otpVerification.update({
+      where: { id: otpRecord.id },
+      data: { used: true },
+    });
+    return NextResponse.json(
+      {
+        ok: false,
+        emailNotConfigured: true,
+        error: delivery.providerNote || 'Não foi possível enviar o código para o seu e-mail.',
+      },
+      { status: 503 }
+    );
+  }
+
+  return NextResponse.json({
+    ok: true,
+    step: 'verify_otp',
+    email: account.email,
+    purpose,
+    expiresInSeconds: 600,
+    cooldownSeconds: 60,
+    deliveredByEmail: true,
+  });
 }
 
 export async function GET(req: NextRequest) {
@@ -378,43 +469,8 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      await prisma.otpVerification.updateMany({
-        where: { userId: account.id, used: false },
-        data: { used: true },
-      });
-
       const purpose: 'register' | 'login' = account.verified ? 'login' : 'register';
-      const code = String(randomInt(100000, 1000000));
-      await prisma.otpVerification.create({
-        data: {
-          userId: account.id,
-          email: account.email,
-          purpose,
-          codeHash: hashOtpCode(code, account.id),
-          attempts: 0,
-          used: false,
-          expiresAt: new Date(Date.now() + OTP_EXPIRATION_MS),
-        },
-      });
-
-      const delivery = await sendOtpEmail({
-        toEmail: account.email,
-        userName: account.name,
-        code,
-        purpose,
-        resendApiKey: body.resendApiKey,
-      });
-
-      return NextResponse.json({
-        ok: true,
-        step: 'verify_otp',
-        email: account.email,
-        purpose,
-        expiresInSeconds: 600,
-        cooldownSeconds: 60,
-        deliveredByEmail: delivery.deliveredByEmail,
-        fallbackCode: delivery.deliveredByEmail ? undefined : code,
-      });
+      return issueAndDeliverOtp(prisma, account, purpose);
     }
 
     // ============================================================
@@ -482,42 +538,7 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      await prisma.otpVerification.updateMany({
-        where: { userId: account.id, used: false },
-        data: { used: true },
-      });
-
-      const code = String(randomInt(100000, 1000000));
-      await prisma.otpVerification.create({
-        data: {
-          userId: account.id,
-          email: account.email,
-          purpose: 'register',
-          codeHash: hashOtpCode(code, account.id),
-          attempts: 0,
-          used: false,
-          expiresAt: new Date(Date.now() + OTP_EXPIRATION_MS),
-        },
-      });
-
-      const delivery = await sendOtpEmail({
-        toEmail: account.email,
-        userName: account.name,
-        code,
-        purpose: 'register',
-        resendApiKey: body.resendApiKey,
-      });
-
-      return NextResponse.json({
-        ok: true,
-        step: 'verify_otp',
-        email: account.email,
-        purpose: 'register',
-        expiresInSeconds: 600,
-        cooldownSeconds: 60,
-        deliveredByEmail: delivery.deliveredByEmail,
-        fallbackCode: delivery.deliveredByEmail ? undefined : code,
-      });
+      return issueAndDeliverOtp(prisma, account, 'register');
     }
 
     // ============================================================
@@ -532,43 +553,8 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      await prisma.otpVerification.updateMany({
-        where: { userId: account.id, used: false },
-        data: { used: true },
-      });
-
       const purpose: 'register' | 'login' = account.verified ? 'login' : 'register';
-      const code = String(randomInt(100000, 1000000));
-      await prisma.otpVerification.create({
-        data: {
-          userId: account.id,
-          email: account.email,
-          purpose,
-          codeHash: hashOtpCode(code, account.id),
-          attempts: 0,
-          used: false,
-          expiresAt: new Date(Date.now() + OTP_EXPIRATION_MS),
-        },
-      });
-
-      const delivery = await sendOtpEmail({
-        toEmail: account.email,
-        userName: account.name,
-        code,
-        purpose,
-        resendApiKey: body.resendApiKey,
-      });
-
-      return NextResponse.json({
-        ok: true,
-        step: 'verify_otp',
-        email: account.email,
-        purpose,
-        expiresInSeconds: 600,
-        cooldownSeconds: 60,
-        deliveredByEmail: delivery.deliveredByEmail,
-        fallbackCode: delivery.deliveredByEmail ? undefined : code,
-      });
+      return issueAndDeliverOtp(prisma, account, purpose);
     }
 
     return NextResponse.json({ ok: false, error: 'Ação inválida.' }, { status: 400 });
