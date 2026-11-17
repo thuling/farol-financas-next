@@ -1,8 +1,14 @@
-export const FAROL_SHELL_HTML = `<!-- ==================== TELA INICIAL DE LOGIN / CRIAR CONTA (AUTH GATE) ==================== -->
+export const FAROL_SHELL_HTML = `<!-- ==================== TELA INICIAL DE LOGIN / CRIAR CONTA (AUTH GATE — ESTILO SKY & BENTO) ==================== -->
   <section class="auth-gate-screen" id="auth-gate-screen">
-    <div class="auth-gate-stage">
-      <!-- Card Esquerdo (Formulário sobreposto ao painel direito, fiel à referência) -->
-      <div class="auth-gate-form-card" id="auth-gate-form-card">
+    <div class="auth-sky-canvas" aria-hidden="true">
+      <div class="auth-sky-orb orb-1"></div>
+      <div class="auth-sky-orb orb-2"></div>
+      <div class="auth-sky-orb orb-3"></div>
+      <div class="auth-sky-grid"></div>
+    </div>
+
+    <header class="auth-gate-topbar">
+      <div class="auth-topbar-pill">
         <div class="auth-gate-brand-mini">
           <div class="brand-logo">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
@@ -10,6 +16,85 @@ export const FAROL_SHELL_HTML = `<!-- ==================== TELA INICIAL DE LOGIN
             </svg>
           </div>
           <span>Farol Finanças</span>
+        </div>
+
+        <span class="auth-topbar-trust">Sincronização PostgreSQL · 2FA</span>
+
+        <button type="button" class="auth-gate-hero-btn" id="gate-hero-toggle-btn">
+          CRIAR CONTA
+        </button>
+      </div>
+    </header>
+
+    <div class="auth-gate-stage">
+      <!-- Showcase Editorial + Cards Flutuantes sobre Céu Luminoso (Finexa / Flowpay / Apptics) -->
+      <div class="auth-gate-hero-card">
+        <div class="auth-gate-hero-content">
+          <span class="auth-hero-pill">
+            <span class="pulse-dot"></span>
+            Controle financeiro em tempo real
+          </span>
+
+          <h1 class="auth-hero-display">
+            Seu dinheiro em <em class="serif-em">fluxo contínuo</em>, com clareza real.
+          </h1>
+
+          <h3 class="auth-gate-hero-title" id="gate-hero-title">BEM-VINDO!</h3>
+          <p class="auth-gate-hero-sub" id="gate-hero-sub">
+            Organize contas, faturas, metas e projeções em um único painel sincronizado na nuvem.
+          </p>
+
+          <!-- Bento Preview Cards Flutuantes -->
+          <div class="auth-float-cluster" aria-hidden="true">
+            <div class="auth-float-card float-card-a">
+              <div class="float-card-top">
+                <span class="float-label">Fluxo do mês</span>
+                <span class="float-badge-mint">Em dia</span>
+              </div>
+              <div class="float-val">Clareza total</div>
+              <svg class="float-spark-svg" viewBox="0 0 180 38" width="100%" height="36">
+                <defs>
+                  <linearGradient id="authSparkFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#0ea5e9" stop-opacity="0.28" />
+                    <stop offset="100%" stop-color="#0ea5e9" stop-opacity="0.0" />
+                  </linearGradient>
+                </defs>
+                <path d="M 4 28 C 32 24, 52 30, 82 18 C 110 7, 140 16, 176 6 L 176 36 L 4 36 Z" fill="url(#authSparkFill)" />
+                <path d="M 4 28 C 32 24, 52 30, 82 18 C 110 7, 140 16, 176 6" fill="none" stroke="#0d6efd" stroke-width="2.4" stroke-linecap="round" class="anim-spark-draw" />
+                <circle cx="176" cy="6" r="3.5" fill="#10b981" stroke="#ffffff" stroke-width="1.5" />
+              </svg>
+            </div>
+
+            <div class="auth-float-stack">
+              <div class="auth-float-card float-card-b">
+                <span class="float-label">Leitura de Faturas</span>
+                <div class="float-chips-row">
+                  <span>CSV</span>
+                  <span>.MD</span>
+                  <span>PDF</span>
+                  <span>IA</span>
+                </div>
+              </div>
+
+              <div class="auth-float-card float-card-c">
+                <div class="float-card-top">
+                  <span class="float-label">Metas & Reserva</span>
+                  <span class="float-pct">2FA Ativo</span>
+                </div>
+                <div class="float-bar-track">
+                  <div class="float-bar-fill"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card Porcelain / Glass de Login & Cadastro -->
+      <div class="auth-gate-form-card" id="auth-gate-form-card">
+        <div class="auth-card-mode-pills" role="tablist" aria-label="Modo de acesso">
+          <button type="button" class="auth-mode-pill active" data-gate-mode-btn="login">Entrar</button>
+          <button type="button" class="auth-mode-pill" data-gate-mode-btn="register">Criar conta</button>
         </div>
 
         <h2 class="auth-gate-title" id="auth-gate-title">Acesse sua conta</h2>
@@ -106,46 +191,6 @@ export const FAROL_SHELL_HTML = `<!-- ==================== TELA INICIAL DE LOGIN
             </button>
           </div>
         </form>
-      </div>
-
-      <!-- Painel Direito (Hero com Ondas Fluídas na Paleta Farol, fiel à referência) -->
-      <div class="auth-gate-hero-card">
-        <svg class="auth-gate-waves-svg" viewBox="0 0 500 600" preserveAspectRatio="none" aria-hidden="true">
-          <defs>
-            <linearGradient id="farolWaveBg" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stop-color="#0f2940" />
-              <stop offset="50%" stop-color="#18476b" />
-              <stop offset="100%" stop-color="#0b1f32" />
-            </linearGradient>
-            <linearGradient id="farolBlob1" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stop-color="#38b6ff" stop-opacity="0.45" />
-              <stop offset="100%" stop-color="#1d4ed8" stop-opacity="0.18" />
-            </linearGradient>
-            <linearGradient id="farolBlob2" x1="1" y1="0" x2="0" y2="1">
-              <stop offset="0%" stop-color="#56c2f6" stop-opacity="0.38" />
-              <stop offset="100%" stop-color="#153752" stop-opacity="0.55" />
-            </linearGradient>
-            <linearGradient id="farolBlob3" x1="0" y1="1" x2="1" y2="0">
-              <stop offset="0%" stop-color="#091724" stop-opacity="0.7" />
-              <stop offset="100%" stop-color="#2b6cb0" stop-opacity="0.35" />
-            </linearGradient>
-          </defs>
-          <rect width="500" height="600" fill="url(#farolWaveBg)" />
-          <path d="M -40,-20 L 380,-20 C 430,110 380,260 280,290 C 170,320 110,220 20,260 C -40,285 -40,150 -40,-20 Z" fill="url(#farolBlob1)" />
-          <path d="M 520,160 C 410,180 390,340 450,430 C 490,490 520,460 520,380 Z" fill="url(#farolBlob2)" />
-          <path d="M -30,520 C 60,390 220,370 340,440 C 440,498 480,560 520,620 L -30,620 Z" fill="url(#farolBlob3)" />
-          <circle cx="10" cy="310" r="68" fill="url(#farolBlob2)" />
-        </svg>
-
-        <div class="auth-gate-hero-content">
-          <h3 class="auth-gate-hero-title" id="gate-hero-title">BEM-VINDO!</h3>
-          <p class="auth-gate-hero-sub" id="gate-hero-sub">
-            Insira seus dados e comece sua jornada financeira conosco no Farol
-          </p>
-          <button type="button" class="auth-gate-hero-btn" id="gate-hero-toggle-btn">
-            CRIAR CONTA
-          </button>
-        </div>
       </div>
     </div>
   </section>

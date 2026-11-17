@@ -115,7 +115,8 @@ function getDefaultState(userName = 'Meu nome') {
     currentTab: 'visao-geral',
     accumulatedSubTab: 'gastos',
     privacyMode: false,
-    theme: 'dark',
+    theme: 'light',
+    designV3Applied: true,
     lastUsedAccountId: 'acc-nubank',
     profile: {
       name: userName,
@@ -378,6 +379,15 @@ function getImportableLocalDefaultState() {
   return null;
 }
 
+function upgradeLegacyThemeOnce(st) {
+  if (!st || typeof st !== 'object') return st;
+  if (!st.designV3Applied) {
+    st.theme = 'light';
+    st.designV3Applied = true;
+  }
+  return st;
+}
+
 function loadStateForUser(userId = usersIndex.activeUserId, fallbackName = null) {
   const targetId = userId || 'user-default';
   const resolvedName = fallbackName || usersIndex.users.find(u => u.id === targetId)?.name || 'Meu nome';
@@ -389,7 +399,7 @@ function loadStateForUser(userId = usersIndex.activeUserId, fallbackName = null)
     if (isUntouchedDemoState(stored)) {
       return cleanBase;
     }
-    return mergeDefaultCategories({ ...cleanBase, ...stored });
+    return upgradeLegacyThemeOnce(mergeDefaultCategories({ ...cleanBase, ...stored }));
   }
 
   if (targetId === 'user-default') {
@@ -689,9 +699,23 @@ function syncRecurrencesForMonth(ym = state.selectedMonth) {
 // ============================================================
 // RENDERIZAÇÃO PRINCIPAL
 // ============================================================
+let lastRenderedTab = null;
+
+function updateThemeButtonIcon(theme) {
+  const icon = document.getElementById('theme-icon');
+  if (!icon) return;
+  if (theme === 'light') {
+    icon.innerHTML = '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>';
+  } else {
+    icon.innerHTML = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>';
+  }
+}
+
 function renderApp() {
   syncRecurrencesForMonth(state.selectedMonth);
-  document.documentElement.setAttribute('data-theme', state.theme || 'dark');
+  const activeTheme = state.theme || 'light';
+  document.documentElement.setAttribute('data-theme', activeTheme);
+  updateThemeButtonIcon(activeTheme);
 
   document.getElementById('user-name-label').textContent = state.profile.name;
   document.getElementById('user-plan-label').textContent = state.profile.plan;
@@ -725,6 +749,8 @@ function renderApp() {
     `${fmtMonthLabel(state.selectedMonth)} · ${calInfo.daysRem} dias restantes`;
 
   const container = document.getElementById('view-container');
+  const shouldAnimateEntrance = state.currentTab !== lastRenderedTab;
+  lastRenderedTab = state.currentTab;
 
   switch (state.currentTab) {
     case 'visao-geral':
@@ -770,6 +796,13 @@ function renderApp() {
     default:
       container.innerHTML = renderVisaoGeral();
       bindVisaoGeralEvents();
+  }
+
+  if (shouldAnimateEntrance && container) {
+    container.querySelectorAll('.card').forEach((cardEl, idx) => {
+      cardEl.style.setProperty('--stagger', String(Math.min(idx, 7)));
+      cardEl.classList.add('card-enter');
+    });
   }
 }
 
@@ -956,8 +989,8 @@ function renderVisaoGeral() {
               </linearGradient>
             </defs>
             <path d="M 4 14 L 210 14 Q 235 14 252 24 L 274 37 L 274 44 L 4 44 Z" fill="url(#invGrad)" />
-            <path d="M 4 14 L 210 14 Q 235 14 252 24 L 274 37" fill="none" stroke="#49b6eb" stroke-width="2" stroke-linecap="round"/>
-            <circle cx="274" cy="37" r="3.8" fill="#f59e0b" stroke="#14222b" stroke-width="1.5"/>
+            <path d="M 4 14 L 210 14 Q 235 14 252 24 L 274 37" fill="none" stroke="#0d6efd" stroke-width="2.2" stroke-linecap="round" class="anim-spark-draw"/>
+            <circle cx="274" cy="37" r="3.8" fill="#10b981" stroke="var(--bg-card-solid, #ffffff)" stroke-width="1.5"/>
           </svg>
         </div>
 
@@ -1245,16 +1278,16 @@ function buildMonthlySpendSvg(expenseCents, txs = [], daysInMonth = 30) {
     <svg width="100%" viewBox="0 0 296 72" style="display:block; height:auto; max-height:80px;">
       <defs>
         <linearGradient id="coralArea" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#f16364" stop-opacity="0.28"/>
-          <stop offset="100%" stop-color="#f16364" stop-opacity="0.02"/>
+          <stop offset="0%" stop-color="#ffffff" stop-opacity="0.32"/>
+          <stop offset="100%" stop-color="#ffffff" stop-opacity="0.02"/>
         </linearGradient>
       </defs>
-      <line x1="0" y1="16" x2="296" y2="16" stroke="var(--chart-grid, rgba(255,255,255,0.05))" stroke-width="1"/>
-      <line x1="0" y1="36" x2="296" y2="36" stroke="var(--chart-grid, rgba(255,255,255,0.05))" stroke-width="1"/>
-      <line x1="0" y1="56" x2="296" y2="56" stroke="var(--chart-grid, rgba(255,255,255,0.05))" stroke-width="1"/>
+      <line x1="0" y1="16" x2="296" y2="16" stroke="rgba(255,255,255,0.16)" stroke-width="1"/>
+      <line x1="0" y1="36" x2="296" y2="36" stroke="rgba(255,255,255,0.16)" stroke-width="1"/>
+      <line x1="0" y1="56" x2="296" y2="56" stroke="rgba(255,255,255,0.16)" stroke-width="1"/>
       <path d="${pathArea}" fill="url(#coralArea)"/>
-      <path d="${pathLine}" fill="none" stroke="#f16364" stroke-width="2.3" stroke-linecap="round"/>
-      <circle cx="288" cy="${endY.toFixed(1)}" r="4.5" fill="#f59e0b" stroke="#ffffff" stroke-width="1.5"/>
+      <path d="${pathLine}" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" class="anim-spark-draw"/>
+      <circle cx="288" cy="${endY.toFixed(1)}" r="4.5" fill="#bef264" stroke="#0d6efd" stroke-width="1.8"/>
       ${zones}
     </svg>
   `;
@@ -1267,7 +1300,7 @@ function buildDonutSvg(distribution, totalExpenseCents) {
   if (!totalExpenseCents || distribution.length === 0) {
     return `
       <svg width="146" height="146" viewBox="0 0 146 146">
-        <circle cx="73" cy="73" r="${radius}" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="18"
+        <circle cx="73" cy="73" r="${radius}" fill="none" stroke="var(--ring-track, rgba(15,35,50,0.12))" stroke-width="18"
           class="donut-slice-hover" data-tip-title="Sem gastos" data-tip-val="R$ 0,00 (0%)"/>
       </svg>
     `;
@@ -1289,10 +1322,10 @@ function buildDonutSvg(distribution, totalExpenseCents) {
   }).join('');
 
   return `
-    <svg width="146" height="146" viewBox="0 0 146 146">
-      <circle cx="73" cy="73" r="${radius}" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="18"/>
+    <svg width="146" height="146" viewBox="0 0 146 146" class="anim-donut-in">
+      <circle cx="73" cy="73" r="${radius}" fill="none" stroke="var(--ring-track, rgba(15,35,50,0.08))" stroke-width="18"/>
       ${segments}
-      <line x1="73" y1="8" x2="73" y2="27" stroke="#14222b" stroke-width="2.5" style="pointer-events:none;"/>
+      <line x1="73" y1="8" x2="73" y2="27" stroke="var(--bg-card-solid, #ffffff)" stroke-width="2.5" style="pointer-events:none;"/>
     </svg>
   `;
 }
@@ -1302,11 +1335,11 @@ function buildReserveRingSvg(pct) {
   const c = 2 * Math.PI * r;
   const dash = (pct / 100) * c;
   return `
-    <svg width="78" height="78" viewBox="0 0 78 78">
-      <circle cx="39" cy="39" r="${r}" fill="none" stroke="var(--ring-track, rgba(255,255,255,0.08))" stroke-width="7"/>
-      <circle cx="39" cy="39" r="${r}" fill="none" stroke="#f59e0b" stroke-width="7"
+    <svg width="78" height="78" viewBox="0 0 78 78" class="anim-donut-in">
+      <circle cx="39" cy="39" r="${r}" fill="none" stroke="var(--ring-track, rgba(15,35,50,0.12))" stroke-width="7"/>
+      <circle cx="39" cy="39" r="${r}" fill="none" stroke="#0d6efd" stroke-width="7"
         stroke-dasharray="${dash} ${c - dash}" transform="rotate(-90 39 39)" stroke-linecap="round"/>
-      <circle cx="39" cy="8" r="3.8" fill="#f59e0b"/>
+      <circle cx="39" cy="8" r="3.8" fill="#0d6efd"/>
     </svg>
   `;
 }
@@ -1357,9 +1390,9 @@ function buildAccumulatedAreaSvg(expenseCents, mode, partialResultCents = 0, txs
 
   return `
     <svg width="100%" viewBox="0 0 560 52" style="display:block; height:auto; max-height:62px;">
-      <line x1="0" y1="44" x2="560" y2="44" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
-      <path d="${pathLine}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linecap="round"/>
-      <circle cx="552" cy="${endY.toFixed(1)}" r="4" fill="#f59e0b" stroke="#fff" stroke-width="1.2"/>
+      <line x1="0" y1="44" x2="560" y2="44" stroke="var(--chart-grid, rgba(15,35,50,0.08))" stroke-width="1"/>
+      <path d="${pathLine}" fill="none" stroke="${color}" stroke-width="2.4" stroke-linecap="round" class="anim-spark-draw"/>
+      <circle cx="552" cy="${endY.toFixed(1)}" r="4" fill="#0d6efd" stroke="var(--bg-card-solid, #ffffff)" stroke-width="1.4"/>
       ${hoverZones}
     </svg>
   `;
@@ -3220,7 +3253,7 @@ function renderFaturasView() {
         </div>
 
         <div class="fatura-card-actions" style="flex-wrap:wrap;">
-          <div style="display:flex; gap:6px;">
+          <div style="display:flex; gap:6px; flex-wrap:wrap;">
             <button class="btn-secondary" data-add-tx-account="${acc.id}">+ Lançar</button>
             <button class="btn-secondary" data-import-invoice-acc="${acc.id}" title="Fazer upload de fatura CSV, Markdown (.md), PDF ou Foto para este cartão">↑ Importar Fatura</button>
           </div>
@@ -5387,6 +5420,9 @@ function setAuthGateMode(mode) {
   if (heroBtn) heroBtn.textContent = isReg ? 'FAZER LOGIN' : 'CRIAR CONTA';
   if (inlineSwitch) inlineSwitch.textContent = isReg ? 'Já tenho conta' : 'Criar conta grátis';
   if (feedback) feedback.style.display = 'none';
+  document.querySelectorAll('[data-gate-mode-btn]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.gateModeBtn === (isReg ? 'register' : 'login'));
+  });
 }
 
 function resolveAuthenticatedWorkspaceState(user, candidateServerState, authPurpose = null) {
@@ -5464,6 +5500,7 @@ function resolveAuthenticatedWorkspaceState(user, candidateServerState, authPurp
   nextState.userEmail = user.email;
   if (nextState.profile) nextState.profile.name = user.name;
   nextState.isExplicitDemo = false;
+  upgradeLegacyThemeOnce(nextState);
 
   return { nextState, shouldSync, migratedFromDefault };
 }
@@ -5592,6 +5629,12 @@ function bindAuthEvents() {
       setAuthGateMode(cur === 'login' ? 'register' : 'login');
     });
   }
+
+  document.querySelectorAll('[data-gate-mode-btn]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      setAuthGateMode(btn.dataset.gateModeBtn || 'login');
+    });
+  });
 
   const formGate = document.getElementById('form-auth-gate');
   if (formGate) {
