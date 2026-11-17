@@ -3,14 +3,14 @@ import { randomBytes, randomInt, scryptSync, timingSafeEqual, createHmac } from 
 import nodemailer from 'nodemailer';
 import { getPrisma } from '@/lib/prisma';
 import { ensureDbSchema } from '@/lib/db-init';
+import { SESSION_COOKIE, getSessionSecret, signSession, verifySession, isAdminEmail } from '@/lib/session';
 
-const SESSION_COOKIE = 'farol_session';
 const OTP_EXPIRATION_MS = 10 * 60 * 1000; // 10 minutos
 const OTP_COOLDOWN_MS = 55 * 1000;       // 60s no cliente (55s de tolerância no servidor)
 const OTP_MAX_ATTEMPTS = 3;
 
 function getSecret(): string {
-  return process.env.AUTH_SECRET || process.env.DATABASE_URL || 'farol-financas-default-secret-key-2026';
+  return getSessionSecret();
 }
 
 function hashPassword(password: string): string {
@@ -102,25 +102,6 @@ function isUntouchedDemoServerState(st: any): boolean {
   return txs.some((t: any) => t && t.id === 'tx-initial-1')
     || goals.some((g: any) => g && g.id === 'goal-2')
     || recs.some((r: any) => r && r.id === 'rec-1');
-}
-
-function signSession(payload: { id: string; email: string; name: string }): string {
-  const data = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
-  const sig = createHmac('sha256', getSecret()).update(data).digest('base64url');
-  return `${data}.${sig}`;
-}
-
-function verifySession(token?: string | null): { id: string; email: string; name: string } | null {
-  if (!token || !token.includes('.')) return null;
-  const [data, sig] = token.split('.');
-  if (!data || !sig) return null;
-  const expected = createHmac('sha256', getSecret()).update(data).digest('base64url');
-  if (sig !== expected) return null;
-  try {
-    return JSON.parse(Buffer.from(data, 'base64url').toString('utf8'));
-  } catch {
-    return null;
-  }
 }
 
 async function sendOtpEmail({
@@ -332,7 +313,12 @@ export async function GET(req: NextRequest) {
       ok: true,
       dbConnected: true,
       authenticated: true,
-      user: { id: account.id, email: account.email, name: account.name },
+      user: {
+        id: account.id,
+        email: account.email,
+        name: account.name,
+        isAdmin: isAdminEmail(account.email),
+      },
       state: parsedState,
     });
   } catch (err) {
@@ -503,7 +489,12 @@ export async function POST(req: NextRequest) {
         ok: true,
         step: 'authenticated',
         purpose: activeOtp.purpose,
-        user: { id: account.id, email: account.email, name: account.name },
+        user: {
+          id: account.id,
+          email: account.email,
+          name: account.name,
+          isAdmin: isAdminEmail(account.email),
+        },
         state: parsedState,
       });
       res.cookies.set(SESSION_COOKIE, token, {

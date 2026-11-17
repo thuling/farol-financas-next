@@ -338,6 +338,14 @@ export const FAROL_SHELL_HTML = `<!-- ==================== TELA INICIAL DE LOGIN
             <span id="auth-btn-label">Entrar / Criar Conta</span>
           </button>
 
+          <!-- Atalho Painel Admin (Exibido apenas para administrador autorizado) -->
+          <a href="/admin" id="admin-panel-link" class="month-pill admin-entry-pill" title="Abrir Painel Admin (Métricas & Cliques)" style="display:none; text-decoration:none; align-items:center; gap:6px; font-weight:700;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+            <span>Admin</span>
+          </a>
+
           <!-- Botão Tema Claro / Escuro -->
           <button class="icon-circle-btn" id="theme-toggle-btn" title="Alternar tema claro/escuro" aria-label="Alternar tema">
             <svg id="theme-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

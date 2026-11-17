@@ -41,7 +41,7 @@ model UserWorkspace {
   salaryDay          Int           @default(5)
   monthlyBudgetCents Int           @default(0)
   emergencyGoalCents Int           @default(33000)
-  theme              String        @default("dark")
+  theme              String        @default("light")
   hideValues         Boolean       @default(false)
   lastUsedAccountId  String?
   stateJson          String        @db.Text
@@ -49,6 +49,23 @@ model UserWorkspace {
   updatedAt          DateTime      @updatedAt
   bankAccounts       BankAccount[]
   transactions       Transaction[]
+}
+
+model AnalyticsEvent {
+  id        String   @id @default(cuid())
+  userId    String?
+  userEmail String?
+  sessionId String
+  eventType String
+  target    String
+  label     String   @default("")
+  tab       String   @default("")
+  path      String   @default("/")
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([eventType, createdAt])
+  @@index([userId, createdAt])
 }
 
 model BankAccount {

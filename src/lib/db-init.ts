@@ -102,6 +102,30 @@ export async function ensureDbSchema(prisma: PrismaClient): Promise<void> {
         CONSTRAINT "Transaction_userId_fkey" FOREIGN KEY ("userId") REFERENCES "UserWorkspace"("id") ON DELETE CASCADE ON UPDATE CASCADE
       );
     `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "AnalyticsEvent" (
+        "id" TEXT NOT NULL,
+        "userId" TEXT,
+        "userEmail" TEXT,
+        "sessionId" TEXT NOT NULL,
+        "eventType" TEXT NOT NULL,
+        "target" TEXT NOT NULL,
+        "label" TEXT NOT NULL DEFAULT '',
+        "tab" TEXT NOT NULL DEFAULT '',
+        "path" TEXT NOT NULL DEFAULT '/',
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "AnalyticsEvent_pkey" PRIMARY KEY ("id")
+      );
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "AnalyticsEvent_createdAt_idx" ON "AnalyticsEvent"("createdAt");
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "AnalyticsEvent_eventType_createdAt_idx" ON "AnalyticsEvent"("eventType", "createdAt");
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "AnalyticsEvent_userId_createdAt_idx" ON "AnalyticsEvent"("userId", "createdAt");
+    `);
     schemaEnsured = true;
   } catch (err) {
     console.warn('[Farol DB] ensureDbSchema warning:', err);

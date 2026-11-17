@@ -4425,6 +4425,168 @@ function bindContasEvents() {
 }
 
 // ============================================================
+// TELEMETRIA DE CLIQUES & ENGAJAMENTO (fetchLater BATCHING)
+// ============================================================
+const ANALYTICS_ENDPOINT = '/api/track';
+const ANALYTICS_BATCH_WINDOW_MS = 10 * 1000;
+const ANALYTICS_MAX_QUEUE_SIZE = 80;
+const ANALYTICS_SESSION_KEY = 'farol_analytics_sid_v1';
+
+const analyticsQueue = [];
+let analyticsFetchLaterResult = null;
+let analyticsFetchLaterController = null;
+let analyticsTrackerBound = false;
+
+function installFetchLaterPolyfill() {
+  if (typeof globalThis === 'undefined' || typeof window === 'undefined' || typeof document === 'undefined') {
+    return;
+  }
+  globalThis.fetchLater ??= function fetchLater(url, init = {}) {
+    let timeoutHandle;
+    let activated = false;
+
+    function sendNow() {
+      if (!(init.signal && init.signal.aborted)) {
+        if (
+          (typeof Request !== 'undefined' && 'keepalive' in Request.prototype) ||
+          init.method !== 'POST' ||
+          init.headers
+        ) {
+          fetch(url, Object.assign({}, init, { keepalive: true })).catch(() => {});
+          activated = true;
+        } else if (typeof navigator?.sendBeacon === 'function') {
+          activated = navigator.sendBeacon(url, init.body);
+        }
+      }
+      destroy();
+    }
+
+    function destroy() {
+      document.removeEventListener('visibilitychange', sendNow);
+      clearTimeout(timeoutHandle);
+    }
+
+    if (document.visibilityState === 'hidden') {
+      queueMicrotask(sendNow);
+    } else {
+      document.addEventListener('visibilitychange', sendNow);
+      if (typeof init.activateAfter === 'number' && init.activateAfter >= 0) {
+        timeoutHandle = setTimeout(sendNow, init.activateAfter);
+      }
+    }
+
+    if (init.signal) {
+      init.signal.addEventListener('abort', destroy);
+    }
+
+    return {
+      get activated() {
+        return activated;
+      }
+    };
+  };
+}
+
+function getAnalyticsSessionId() {
+  try {
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      let sid = window.sessionStorage.getItem(ANALYTICS_SESSION_KEY);
+      if (!sid) {
+        sid = typeof window.crypto?.randomUUID === 'function'
+          ? window.crypto.randomUUID()
+          : `sid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        window.sessionStorage.setItem(ANALYTICS_SESSION_KEY, sid);
+      }
+      return sid;
+    }
+  } catch {}
+  return `sid-${Date.now()}`;
+}
+
+function describeClickableTarget(el) {
+  if (!el || typeof el.getAttribute !== 'function') return null;
+  if (el.id) return `#${el.id}`;
+  if (el.dataset?.tab) return `tab:${el.dataset.tab}`;
+  if (el.dataset?.closeModal) return `close:${el.dataset.closeModal}`;
+  if (el.dataset?.gateModeBtn) return `gate:${el.dataset.gateModeBtn}`;
+  if (el.dataset?.authTab) return `auth:${el.dataset.authTab}`;
+  if (el.dataset?.quickCat) return `cat-chip:${el.dataset.quickCat}`;
+  if (el.dataset?.editGoal) return 'edit:goal';
+  if (el.dataset?.aporteGoal) return 'aporte:goal';
+  if (el.dataset?.editCat) return 'edit:category';
+  if (el.dataset?.editAcc) return 'edit:account';
+  if (el.dataset?.editTx) return 'edit:tx';
+  if (el.dataset?.segVal) return `seg:${el.dataset.segVal}`;
+  const tag = (el.tagName || 'btn').toLowerCase();
+  const cls = typeof el.className === 'string'
+    ? el.className.trim().split(/\s+/).slice(0, 2).join('.')
+    : '';
+  return cls ? `${tag}.${cls}` : tag;
+}
+
+function trackFarolEvent(eventType, target, label = '') {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  if (typeof globalThis.fetchLater !== 'function') installFetchLaterPolyfill();
+  if (typeof globalThis.fetchLater !== 'function') return;
+
+  if (analyticsFetchLaterResult?.activated || analyticsQueue.length >= ANALYTICS_MAX_QUEUE_SIZE) {
+    analyticsFetchLaterController = null;
+    analyticsFetchLaterResult = null;
+    analyticsQueue.length = 0;
+  }
+
+  analyticsQueue.push({
+    sessionId: getAnalyticsSessionId(),
+    eventType: String(eventType || 'click').slice(0, 40),
+    target: String(target || 'unknown').slice(0, 120),
+    label: String(label || '').replace(/\s+/g, ' ').trim().slice(0, 80),
+    tab: String(state?.currentTab || '').slice(0, 48),
+    path: String(window.location?.pathname || '/').slice(0, 120),
+  });
+
+  if (analyticsFetchLaterController) {
+    analyticsFetchLaterController.abort();
+  }
+  analyticsFetchLaterController = typeof AbortController === 'function' ? new AbortController() : null;
+
+  try {
+    analyticsFetchLaterResult = globalThis.fetchLater(ANALYTICS_ENDPOINT, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(analyticsQueue),
+      signal: analyticsFetchLaterController?.signal,
+      activateAfter: ANALYTICS_BATCH_WINDOW_MS,
+    });
+  } catch {
+    // Fallback silencioso caso exceda cota do navegador
+  }
+}
+
+function initAnalyticsTracker() {
+  if (analyticsTrackerBound || typeof document === 'undefined' || typeof document.addEventListener !== 'function') {
+    return;
+  }
+  analyticsTrackerBound = true;
+  installFetchLaterPolyfill();
+
+  trackFarolEvent('page_view', window.location?.pathname || '/', document.title || 'Farol Finanças');
+
+  document.addEventListener('click', (event) => {
+    const clickable = event.target?.closest?.('button, a, [role="button"], .sidebar-footer, summary');
+    if (!clickable) return;
+    const targetDesc = describeClickableTarget(clickable);
+    if (!targetDesc) return;
+    const cleanLabel = (
+      clickable.getAttribute('aria-label') ||
+      clickable.getAttribute('title') ||
+      clickable.textContent ||
+      ''
+    ).replace(/\s+/g, ' ').trim().slice(0, 60);
+    trackFarolEvent('click', targetDesc, cleanLabel);
+  }, { passive: true });
+}
+
+// ============================================================
 // MODAIS NATIVOS (<dialog> TOP LAYER + LIVE RAIL PREVIEWS)
 // ============================================================
 let farolSupportsDisplayTransition;
@@ -4484,6 +4646,9 @@ function openFarolModal(modalOrId) {
   const modal = typeof modalOrId === 'string' ? document.getElementById(modalOrId) : modalOrId;
   if (!modal) return;
   modal.removeAttribute?.('data-closing');
+  if (modal.id) {
+    trackFarolEvent('modal_open', modal.id, modal.querySelector?.('.modal-title')?.textContent?.trim() || modal.id);
+  }
   if (typeof modal.showModal === 'function') {
     if (!modal.open) {
       try {
@@ -4869,6 +5034,7 @@ export function initFarolApp() {
   document.querySelectorAll('.nav-item').forEach(btn => {
     btn.addEventListener('click', () => {
       state.currentTab = btn.dataset.tab;
+      trackFarolEvent('tab_switch', `tab:${btn.dataset.tab}`, btn.textContent?.trim() || btn.dataset.tab);
       saveState();
       renderApp();
       try {
@@ -4910,6 +5076,7 @@ export function initFarolApp() {
   document.getElementById('profile-trigger').addEventListener('click', () => openProfileModal());
 
   setupFarolDialogs();
+  initAnalyticsTracker();
 
   document.querySelectorAll('[data-close-modal]').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -5958,11 +6125,20 @@ function applyAuthenticatedUser(user, serverState, remember = true, authPurpose 
   if (migratedFromDefault) {
     showUndoToast('Seus dados locais anteriores foram importados para sua conta na nuvem!');
   }
+  trackFarolEvent('auth_success', authPurpose || 'login', 'Conta verificada');
 }
 
 function updateAuthHeaderBadge() {
   const dot = document.getElementById('auth-status-dot');
   const label = document.getElementById('auth-btn-label');
+  const adminLink = document.getElementById('admin-panel-link');
+  const isAdminUser = Boolean(
+    cloudSessionUser &&
+    (cloudSessionUser.isAdmin || String(cloudSessionUser.email || '').trim().toLowerCase() === 'thulioggomes@gmail.com')
+  );
+  if (adminLink) {
+    adminLink.style.display = isAdminUser ? 'inline-flex' : 'none';
+  }
   if (!dot || !label) return;
   if (cloudSessionUser && cloudSessionUser.email) {
     dot.style.background = 'var(--green-emerald)';
