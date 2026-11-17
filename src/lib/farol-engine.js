@@ -78,24 +78,28 @@ function addMonthsYM(ym, delta) {
 // ISOLAMENTO POR USUÁRIO & ESTADO EM CENTAVOS
 // ============================================================
 function getUsersIndex() {
-  if (typeof window === 'undefined') {
-    return {
-      activeUserId: 'user-default',
-      users: [{ id: 'user-default', name: 'Meu nome' }]
-    };
-  }
-  try {
-    const raw = window.localStorage.getItem(USERS_INDEX_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {}
-  return {
+  const fallback = {
     activeUserId: 'user-default',
     users: [{ id: 'user-default', name: 'Meu nome' }]
   };
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const raw = window.localStorage.getItem(USERS_INDEX_KEY);
+    if (raw && raw !== 'undefined') {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && Array.isArray(parsed.users) && parsed.users.length) {
+        return {
+          activeUserId: typeof parsed.activeUserId === 'string' && parsed.activeUserId ? parsed.activeUserId : 'user-default',
+          users: parsed.users.filter(u => u && typeof u.id === 'string')
+        };
+      }
+    }
+  } catch (e) {}
+  return fallback;
 }
 
-function saveUsersIndex(index) {
-  if (typeof window === 'undefined') return;
+function saveUsersIndex(index = usersIndex) {
+  if (typeof window === 'undefined' || !index || typeof index !== 'object') return;
   try {
     window.localStorage.setItem(USERS_INDEX_KEY, JSON.stringify(index));
   } catch (e) {}
@@ -182,6 +186,78 @@ function getDefaultState(userName = 'Meu nome') {
   };
 }
 
+function getCleanEmptyState(userName = 'Meu nome') {
+  const base = getDefaultState(userName);
+  return {
+    ...base,
+    lastUsedAccountId: 'acc-nubank',
+    accounts: [
+      { id: 'acc-nubank', name: 'Conta Principal', type: 'Conta Corrente', initialBalanceCents: 0, limitCents: 0, closingDay: 5, dueDay: 12 }
+    ],
+    transactions: [],
+    recurrences: [],
+    goals: [],
+    assets: [],
+    invoiceMeta: {}
+  };
+}
+
+function hasCustomizedUserData(st) {
+  if (!st || typeof st !== 'object') return false;
+  if (st.isExplicitDemo) return true;
+
+  const txs = Array.isArray(st.transactions) ? st.transactions : [];
+  if (txs.some(t => !(t && t.id === 'tx-initial-1' && Number(t.amountCents) === 5500 && t.description === 'Pedido Delivery' && t.date === '2026-11-09'))) {
+    return true;
+  }
+
+  const recs = Array.isArray(st.recurrences) ? st.recurrences : [];
+  if (recs.some(r => !(r && ((r.id === 'rec-1' && Number(r.amountCents) === 9990 && r.active === false) || (r.id === 'rec-2' && Number(r.amountCents) === 2190 && r.active === false))))) {
+    return true;
+  }
+
+  const goals = Array.isArray(st.goals) ? st.goals : [];
+  if (goals.some(g => !(g && ((g.id === 'goal-1' && Number(g.currentCents) === 0 && Number(g.targetCents) === 33000) || (g.id === 'goal-2' && Number(g.currentCents) === 45000 && Number(g.targetCents) === 300000))))) {
+    return true;
+  }
+
+  const assets = Array.isArray(st.assets) ? st.assets : [];
+  if (assets.some(a => !(a && a.id === 'ast-1' && Number(a.amountCents) === 0 && a.name === 'CDB Liquidez Diária'))) {
+    return true;
+  }
+
+  const accounts = Array.isArray(st.accounts) ? st.accounts : [];
+  if (accounts.some(a => !(a && ((a.id === 'acc-nubank' && a.name === 'Conta Principal' && Number(a.initialBalanceCents || 0) === 0) || (a.id === 'acc-inter' && a.name === 'Cartão Black' && Number(a.initialBalanceCents || 0) === 0))))) {
+    return true;
+  }
+
+  const cats = Array.isArray(st.categories) ? st.categories : [];
+  if (cats.some(c => !c || typeof c.id !== 'string' || !c.id.startsWith('cat-') || c.archived === true)) {
+    return true;
+  }
+
+  if (st.invoiceMeta && typeof st.invoiceMeta === 'object' && Object.keys(st.invoiceMeta).length > 0) {
+    return true;
+  }
+
+  if ((Number(st.profile?.monthlySalaryCents) || 0) > 0 || (Number(st.profile?.monthlyBudgetCents) || 0) > 0) {
+    return true;
+  }
+
+  return false;
+}
+
+function isUntouchedDemoState(st) {
+  if (!st || typeof st !== 'object' || st.isExplicitDemo) return false;
+  if (hasCustomizedUserData(st)) return false;
+  const txs = Array.isArray(st.transactions) ? st.transactions : [];
+  const goals = Array.isArray(st.goals) ? st.goals : [];
+  const recs = Array.isArray(st.recurrences) ? st.recurrences : [];
+  return txs.some(t => t && t.id === 'tx-initial-1')
+    || goals.some(g => g && g.id === 'goal-2')
+    || recs.some(r => r && r.id === 'rec-1');
+}
+
 function migrateLegacyV1(v1) {
   const def = getDefaultState(v1?.profile?.name || 'Meu nome');
   return {
@@ -260,28 +336,64 @@ function mergeDefaultCategories(targetState) {
   return targetState;
 }
 
-function loadState() {
-  if (typeof window === 'undefined') {
-    return getDefaultState('Meu nome');
-  }
-  const key = getUserStorageKey(usersIndex.activeUserId);
+function readStoredStateRaw(userId) {
+  if (typeof window === 'undefined' || !userId) return null;
   try {
-    const raw = window.localStorage.getItem(key);
-    if (raw) {
-      return mergeDefaultCategories({ ...getDefaultState(), ...JSON.parse(raw) });
-    }
-    if (usersIndex.activeUserId === 'user-default') {
-      const legacyRaw = window.localStorage.getItem(LEGACY_V1_KEY);
-      if (legacyRaw) {
-        const migrated = mergeDefaultCategories(migrateLegacyV1(JSON.parse(legacyRaw)));
-        window.localStorage.setItem(key, JSON.stringify(migrated));
-        return migrated;
-      }
+    const raw = window.localStorage.getItem(getUserStorageKey(userId));
+    if (raw && raw !== 'undefined') {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') return parsed;
     }
   } catch (e) {}
-  return getDefaultState(
-    usersIndex.users.find(u => u.id === usersIndex.activeUserId)?.name || 'Meu nome'
-  );
+  return null;
+}
+
+function getImportableLocalDefaultState() {
+  if (typeof window === 'undefined') return null;
+  const defRaw = readStoredStateRaw('user-default');
+  if (defRaw && hasCustomizedUserData(defRaw) && !defRaw.isExplicitDemo) {
+    return mergeDefaultCategories({ ...getCleanEmptyState(defRaw.profile?.name || 'Meu nome'), ...defRaw });
+  }
+  try {
+    const legacyRaw = window.localStorage.getItem(LEGACY_V1_KEY);
+    if (legacyRaw && legacyRaw !== 'undefined') {
+      const migrated = mergeDefaultCategories(migrateLegacyV1(JSON.parse(legacyRaw)));
+      if (hasCustomizedUserData(migrated)) return migrated;
+    }
+  } catch (e) {}
+  return null;
+}
+
+function loadStateForUser(userId = usersIndex.activeUserId, fallbackName = null) {
+  const targetId = userId || 'user-default';
+  const resolvedName = fallbackName || usersIndex.users.find(u => u.id === targetId)?.name || 'Meu nome';
+  const cleanBase = getCleanEmptyState(resolvedName);
+  if (typeof window === 'undefined') return cleanBase;
+
+  const stored = readStoredStateRaw(targetId);
+  if (stored) {
+    if (isUntouchedDemoState(stored)) {
+      return cleanBase;
+    }
+    return mergeDefaultCategories({ ...cleanBase, ...stored });
+  }
+
+  if (targetId === 'user-default') {
+    try {
+      const legacyRaw = window.localStorage.getItem(LEGACY_V1_KEY);
+      if (legacyRaw && legacyRaw !== 'undefined') {
+        const migrated = mergeDefaultCategories(migrateLegacyV1(JSON.parse(legacyRaw)));
+        window.localStorage.setItem(getUserStorageKey(targetId), JSON.stringify(migrated));
+        return migrated;
+      }
+    } catch (e) {}
+  }
+
+  return cleanBase;
+}
+
+function loadState() {
+  return loadStateForUser(usersIndex.activeUserId);
 }
 
 function saveState() {
@@ -4294,6 +4406,11 @@ function openProfileModal() {
   document.getElementById('prof-salary-day').value = state.profile.salaryDay || 5;
   document.getElementById('prof-budget').value = fromCents(state.profile.monthlyBudgetCents || 0).toFixed(2);
   document.getElementById('prof-reserve-goal').value = fromCents(state.profile.emergencyGoalCents || 33000).toFixed(2);
+  const importWrap = document.getElementById('prof-import-local-wrap');
+  if (importWrap) {
+    const canImportLocal = usersIndex.activeUserId !== 'user-default' && Boolean(getImportableLocalDefaultState());
+    importWrap.style.display = canImportLocal ? 'flex' : 'none';
+  }
   document.getElementById('modal-profile').classList.add('open');
 }
 
@@ -4452,11 +4569,35 @@ export function initFarolApp() {
     usersIndex.users.push({ id: newId, name: newName });
     usersIndex.activeUserId = newId;
     saveUsersIndex(usersIndex);
-    state = getDefaultState(newName);
+    state = getCleanEmptyState(newName);
     saveState();
     document.getElementById('modal-profile').classList.remove('open');
     renderApp();
   });
+
+  const btnImportLocal = document.getElementById('btn-import-local-default');
+  if (btnImportLocal) {
+    btnImportLocal.addEventListener('click', () => {
+      const localDefault = getImportableLocalDefaultState();
+      if (!localDefault) {
+        showUndoToast('Nenhum dado local anterior encontrado neste navegador.');
+        return;
+      }
+      state = mergeDefaultCategories({
+        ...getCleanEmptyState(cloudSessionUser?.name || state.profile?.name || 'Meu nome'),
+        ...localDefault,
+        userEmail: cloudSessionUser?.email || state.userEmail,
+        isExplicitDemo: false,
+      });
+      if (state.profile && cloudSessionUser?.name) {
+        state.profile.name = cloudSessionUser.name;
+      }
+      saveState();
+      document.getElementById('modal-profile').classList.remove('open');
+      renderApp();
+      showUndoToast('Dados locais anteriores importados e salvos na sua conta!');
+    });
+  }
 
   // Salvar Categoria & Regras
   document.getElementById('form-category').addEventListener('submit', (e) => {
@@ -4738,7 +4879,7 @@ export function initFarolApp() {
   });
 
   document.getElementById('btn-reset-demo').addEventListener('click', () => {
-    state = getDefaultState(state.profile.name);
+    state = { ...getDefaultState(state.profile.name), isExplicitDemo: true };
     saveState();
     document.getElementById('modal-profile').classList.remove('open');
     renderApp();
@@ -5120,6 +5261,90 @@ function setAuthGateMode(mode) {
   if (feedback) feedback.style.display = 'none';
 }
 
+function resolveAuthenticatedWorkspaceState(user, candidateServerState) {
+  const cleanBase = getCleanEmptyState(user.name);
+  const serverIsDemo = Boolean(candidateServerState && isUntouchedDemoState(candidateServerState));
+  const validServer = candidateServerState && typeof candidateServerState === 'object' && !serverIsDemo
+    ? mergeDefaultCategories({ ...cleanBase, ...candidateServerState })
+    : null;
+  const serverCustomized = Boolean(validServer && hasCustomizedUserData(validServer));
+
+  const localUserRaw = readStoredStateRaw(user.id);
+  const localIsDemo = Boolean(localUserRaw && isUntouchedDemoState(localUserRaw));
+  const validLocalUser = localUserRaw && !localIsDemo
+    ? mergeDefaultCategories({ ...cleanBase, ...localUserRaw })
+    : null;
+  const localUserCustomized = Boolean(validLocalUser && hasCustomizedUserData(validLocalUser));
+
+  const importableDefault = getImportableLocalDefaultState();
+  const alreadyInitializedCloudUser = Boolean(
+    (validServer && Number(validServer.updatedAt) > 0) ||
+    (validLocalUser && Number(validLocalUser.updatedAt) > 0)
+  );
+
+  let nextState = cleanBase;
+  let shouldSync = false;
+  let migratedFromDefault = false;
+
+  if (serverCustomized && localUserCustomized) {
+    const serverUpdated = Number(validServer.updatedAt) || 0;
+    const localUpdated = Number(validLocalUser.updatedAt) || 0;
+    if (localUpdated > serverUpdated) {
+      nextState = validLocalUser;
+      shouldSync = true;
+    } else {
+      nextState = validServer;
+    }
+  } else if (serverCustomized) {
+    nextState = validServer;
+  } else if (localUserCustomized) {
+    nextState = validLocalUser;
+    shouldSync = true;
+  } else if (importableDefault && !alreadyInitializedCloudUser) {
+    nextState = mergeDefaultCategories({ ...cleanBase, ...importableDefault, isExplicitDemo: false });
+    shouldSync = true;
+    migratedFromDefault = true;
+  } else if (validServer && validLocalUser) {
+    const serverUpdated = Number(validServer.updatedAt) || 0;
+    const localUpdated = Number(validLocalUser.updatedAt) || 0;
+    if (localUpdated > serverUpdated) {
+      nextState = validLocalUser;
+      shouldSync = true;
+    } else {
+      nextState = validServer;
+    }
+  } else if (validServer) {
+    nextState = validServer;
+  } else if (validLocalUser) {
+    nextState = validLocalUser;
+    if (!candidateServerState || serverIsDemo) shouldSync = true;
+  } else {
+    nextState = cleanBase;
+    if (!candidateServerState || serverIsDemo || localIsDemo) {
+      shouldSync = true;
+    }
+  }
+
+  nextState.userEmail = user.email;
+  if (nextState.profile) nextState.profile.name = user.name;
+  nextState.isExplicitDemo = false;
+
+  return { nextState, shouldSync, migratedFromDefault };
+}
+
+function ensureUserInIndex(user) {
+  if (!user || !user.id) return;
+  if (!Array.isArray(usersIndex.users)) usersIndex.users = [];
+  usersIndex.activeUserId = user.id;
+  const existing = usersIndex.users.find(u => u.id === user.id);
+  if (existing) {
+    if (user.name) existing.name = user.name;
+  } else {
+    usersIndex.users.push({ id: user.id, name: user.name || 'Minha Conta' });
+  }
+  saveUsersIndex(usersIndex);
+}
+
 function applyAuthenticatedUser(user, serverState, remember = true) {
   cloudSessionUser = user;
   if (typeof window !== 'undefined') {
@@ -5129,23 +5354,29 @@ function applyAuthenticatedUser(user, serverState, remember = true) {
       window.localStorage.removeItem(AUTH_SESSION_STORAGE_KEY);
     }
   }
-  usersIndex.activeUserId = user.id;
-  if (!usersIndex.users.some(u => u.id === user.id)) {
-    usersIndex.users.push({ id: user.id, name: user.name });
-  }
-  saveUsersIndex();
+  ensureUserInIndex(user);
 
-  if (serverState && typeof serverState === 'object') {
-    state = mergeDefaultCategories({ ...getDefaultState(), ...serverState });
-  } else {
-    state = loadStateForUser(user.id);
+  const { nextState, shouldSync, migratedFromDefault } = resolveAuthenticatedWorkspaceState(user, serverState);
+  state = nextState;
+
+  if (typeof window !== 'undefined') {
+    try {
+      if (!state.updatedAt) state.updatedAt = Date.now();
+      window.localStorage.setItem(getUserStorageKey(usersIndex.activeUserId), JSON.stringify(state));
+    } catch (e) {}
   }
-  state.userEmail = user.email;
-  if (state.profile) state.profile.name = user.name;
-  saveState();
+
+  if (shouldSync) {
+    syncStateToCloud();
+  }
+
   updateAuthHeaderBadge();
   setAuthGateVisibility(false);
   renderApp();
+
+  if (migratedFromDefault) {
+    showUndoToast('Seus dados locais anteriores foram importados para sua conta na nuvem!');
+  }
 }
 
 function updateAuthHeaderBadge() {
@@ -5197,8 +5428,8 @@ function bindAuthEvents() {
       const savedUser = JSON.parse(window.localStorage.getItem(AUTH_SESSION_STORAGE_KEY) || 'null');
       if (savedUser && savedUser.id && savedUser.email) {
         cloudSessionUser = savedUser;
-        usersIndex.activeUserId = savedUser.id;
-        state = loadStateForUser(savedUser.id);
+        ensureUserInIndex(savedUser);
+        state = loadStateForUser(savedUser.id, savedUser.name);
         setAuthGateVisibility(false);
         updateAuthHeaderBadge();
       } else {
@@ -5505,11 +5736,11 @@ async function hydrateFromCloud() {
         if (typeof window !== 'undefined') {
           window.localStorage.setItem(AUTH_SESSION_STORAGE_KEY, JSON.stringify(authData.user));
         }
-        usersIndex.activeUserId = authData.user.id;
-        if (!usersIndex.users.some(u => u.id === authData.user.id)) {
-          usersIndex.users.push({ id: authData.user.id, name: authData.user.name });
+        const switchedUser = usersIndex.activeUserId !== authData.user.id;
+        ensureUserInIndex(authData.user);
+        if (switchedUser) {
+          state = loadStateForUser(authData.user.id, authData.user.name);
         }
-        saveUsersIndex();
         updateAuthHeaderBadge();
         setAuthGateVisibility(false);
       } else if (!cloudSessionUser) {
@@ -5523,21 +5754,25 @@ async function hydrateFromCloud() {
     const res = await fetch('/api/state?userId=' + encodeURIComponent(usersIndex.activeUserId));
     if (!res.ok) return;
     const data = await res.json();
-    if (data && data.ok && data.state) {
-      const cloudState = mergeDefaultCategories({ ...getDefaultState(), ...data.state });
-      const localUpdated = Number(state?.updatedAt) || 0;
-      const cloudUpdated = Number(cloudState?.updatedAt) || 0;
-      if (cloudUpdated >= localUpdated) {
-        state = cloudState;
-        if (typeof window !== 'undefined') {
+    if (data && data.ok) {
+      const { nextState, shouldSync, migratedFromDefault } = resolveAuthenticatedWorkspaceState(
+        cloudSessionUser,
+        data.state || null
+      );
+      state = nextState;
+      if (typeof window !== 'undefined') {
+        try {
+          if (!state.updatedAt) state.updatedAt = Date.now();
           window.localStorage.setItem(getUserStorageKey(usersIndex.activeUserId), JSON.stringify(state));
-        }
-        renderApp();
-      } else {
+        } catch (e) {}
+      }
+      renderApp();
+      if (shouldSync) {
         syncStateToCloud();
       }
-    } else if (data && data.ok && !data.state) {
-      syncStateToCloud();
+      if (migratedFromDefault) {
+        showUndoToast('Seus dados locais anteriores foram recuperados para sua conta!');
+      }
     }
   } catch {
     // Segue com cache local

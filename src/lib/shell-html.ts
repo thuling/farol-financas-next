@@ -510,6 +510,13 @@ export const FAROL_SHELL_HTML = `<!-- ==================== TELA INICIAL DE LOGIN
               </div>
             </div>
           </div>
+          <div id="prof-import-local-wrap" style="display:none; margin-bottom:14px; padding:12px 14px; border-radius:12px; border:1px solid rgba(56,182,255,0.28); background:rgba(56,182,255,0.08); align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+            <div style="font-size:12.5px; color:var(--text-secondary); line-height:1.4; flex:1; min-width:200px;">
+              <strong style="color:var(--text-primary); display:block;">Dados locais anteriores encontrados neste navegador</strong>
+              Você pode puxar os lançamentos e metas salvos antes do login para esta conta.
+            </div>
+            <button type="button" class="btn-secondary" id="btn-import-local-default" style="white-space:nowrap;">Importar dados locais</button>
+          </div>
           <div class="form-row-2">
             <div class="form-group">
               <label class="form-label">Seu nome</label>

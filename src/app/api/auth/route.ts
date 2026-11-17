@@ -41,6 +41,64 @@ function verifyOtpHash(code: string, userId: string, storedHash: string): boolea
   return timingSafeEqual(expected, actual);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function hasCustomizedServerState(st: any): boolean {
+  if (!st || typeof st !== 'object') return false;
+  if (st.isExplicitDemo) return true;
+
+  const txs = Array.isArray(st.transactions) ? st.transactions : [];
+  if (txs.some((t: any) => !(t && t.id === 'tx-initial-1' && Number(t.amountCents) === 5500 && t.description === 'Pedido Delivery' && t.date === '2026-11-09'))) {
+    return true;
+  }
+
+  const recs = Array.isArray(st.recurrences) ? st.recurrences : [];
+  if (recs.some((r: any) => !(r && ((r.id === 'rec-1' && Number(r.amountCents) === 9990 && r.active === false) || (r.id === 'rec-2' && Number(r.amountCents) === 2190 && r.active === false))))) {
+    return true;
+  }
+
+  const goals = Array.isArray(st.goals) ? st.goals : [];
+  if (goals.some((g: any) => !(g && ((g.id === 'goal-1' && Number(g.currentCents) === 0 && Number(g.targetCents) === 33000) || (g.id === 'goal-2' && Number(g.currentCents) === 45000 && Number(g.targetCents) === 300000))))) {
+    return true;
+  }
+
+  const assets = Array.isArray(st.assets) ? st.assets : [];
+  if (assets.some((a: any) => !(a && a.id === 'ast-1' && Number(a.amountCents) === 0 && a.name === 'CDB Liquidez Diária'))) {
+    return true;
+  }
+
+  const accounts = Array.isArray(st.accounts) ? st.accounts : [];
+  if (accounts.some((a: any) => !(a && ((a.id === 'acc-nubank' && a.name === 'Conta Principal' && Number(a.initialBalanceCents || 0) === 0) || (a.id === 'acc-inter' && a.name === 'Cartão Black' && Number(a.initialBalanceCents || 0) === 0))))) {
+    return true;
+  }
+
+  const cats = Array.isArray(st.categories) ? st.categories : [];
+  if (cats.some((c: any) => !c || typeof c.id !== 'string' || !c.id.startsWith('cat-') || c.archived === true)) {
+    return true;
+  }
+
+  if (st.invoiceMeta && typeof st.invoiceMeta === 'object' && Object.keys(st.invoiceMeta).length > 0) {
+    return true;
+  }
+
+  if ((Number(st.profile?.monthlySalaryCents) || 0) > 0 || (Number(st.profile?.monthlyBudgetCents) || 0) > 0) {
+    return true;
+  }
+
+  return false;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function isUntouchedDemoServerState(st: any): boolean {
+  if (!st || typeof st !== 'object' || st.isExplicitDemo) return false;
+  if (hasCustomizedServerState(st)) return false;
+  const txs = Array.isArray(st.transactions) ? st.transactions : [];
+  const goals = Array.isArray(st.goals) ? st.goals : [];
+  const recs = Array.isArray(st.recurrences) ? st.recurrences : [];
+  return txs.some((t: any) => t && t.id === 'tx-initial-1')
+    || goals.some((g: any) => g && g.id === 'goal-2')
+    || recs.some((r: any) => r && r.id === 'rec-1');
+}
+
 function signSession(payload: { id: string; email: string; name: string }): string {
   const data = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
   const sig = createHmac('sha256', getSecret()).update(data).digest('base64url');
@@ -398,13 +456,22 @@ export async function POST(req: NextRequest) {
       let workspace = await prisma.userWorkspace.findUnique({ where: { id: account.id } });
       let parsedState = workspace ? JSON.parse(workspace.stateJson) : null;
 
-      if (!parsedState && body.state && typeof body.state === 'object') {
+      if (parsedState && isUntouchedDemoServerState(parsedState)) {
+        parsedState = null;
+        if (workspace) {
+          await prisma.userWorkspace.delete({ where: { id: account.id } }).catch(() => {});
+          workspace = null;
+        }
+      }
+
+      if (!parsedState && body.state && typeof body.state === 'object' && hasCustomizedServerState(body.state)) {
         parsedState = body.state;
         parsedState.userEmail = account.email;
         if (parsedState.profile) parsedState.profile.name = account.name;
         const profile = parsedState.profile || {};
-        workspace = await prisma.userWorkspace.create({
-          data: {
+        workspace = await prisma.userWorkspace.upsert({
+          where: { id: account.id },
+          create: {
             id: account.id,
             email: account.email,
             name: account.name,
@@ -416,6 +483,11 @@ export async function POST(req: NextRequest) {
             theme: String(parsedState.theme || 'dark'),
             hideValues: Boolean(parsedState.privacyMode ?? parsedState.hideValues),
             lastUsedAccountId: parsedState.lastUsedAccountId || null,
+            stateJson: JSON.stringify(parsedState),
+          },
+          update: {
+            email: account.email,
+            name: account.name,
             stateJson: JSON.stringify(parsedState),
           },
         });
@@ -508,35 +580,6 @@ export async function POST(req: NextRequest) {
               verified: false,
             },
           });
-
-      const initialState = body.state && typeof body.state === 'object' ? body.state : null;
-      if (initialState) {
-        initialState.userEmail = email;
-        if (initialState.profile) initialState.profile.name = name;
-        const profile = initialState.profile || {};
-        await prisma.userWorkspace.upsert({
-          where: { id: account.id },
-          create: {
-            id: account.id,
-            email,
-            name,
-            plan: String(profile.plan || 'Plano pessoal'),
-            monthlySalaryCents: Math.round(Number(profile.monthlySalaryCents) || 0),
-            salaryDay: Math.min(28, Math.max(1, Number(profile.salaryDay) || 5)),
-            monthlyBudgetCents: Math.round(Number(profile.monthlyBudgetCents) || 0),
-            emergencyGoalCents: Math.round(Number(profile.emergencyGoalCents) || 33000),
-            theme: String(initialState.theme || 'dark'),
-            hideValues: Boolean(initialState.privacyMode ?? initialState.hideValues),
-            lastUsedAccountId: initialState.lastUsedAccountId || null,
-            stateJson: JSON.stringify(initialState),
-          },
-          update: {
-            email,
-            name,
-            stateJson: JSON.stringify(initialState),
-          },
-        });
-      }
 
       return issueAndDeliverOtp(prisma, account, 'register');
     }
