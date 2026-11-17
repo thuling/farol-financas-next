@@ -1182,6 +1182,99 @@ export const FAROL_SHELL_HTML = `<!-- ==================== TELA INICIAL DE LOGIN
     </div>
   </div>
 
+  <!-- ==================== MODAL: UPLOAD E REVISÃO INTELIGENTE DE FATURA (CSV / PDF / IMAGEM) ==================== -->
+  <div class="modal-backdrop" id="modal-import-invoice">
+    <div class="modal-card" style="max-width:940px;">
+      <div class="modal-header">
+        <div class="modal-header-main">
+          <div class="modal-icon-badge">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>
+            </svg>
+          </div>
+          <div class="modal-header-text">
+            <h3 class="modal-title">Importar Fatura ou Extrato (CSV, PDF ou Imagem)</h3>
+            <p class="modal-subtitle">Extração inteligente de parcelas (X/Y), estornos, pagamentos e revisão editável antes de salvar</p>
+          </div>
+        </div>
+        <button type="button" class="modal-close-btn" data-close-modal="modal-import-invoice" aria-label="Fechar">✕</button>
+      </div>
+
+      <div class="modal-body" style="gap:14px;">
+        <div class="form-row-2">
+          <div class="form-group">
+            <label class="form-label">Arquivo da fatura (.csv, .pdf, .png, .jpg)</label>
+            <div class="field-box" style="padding:6px 10px;">
+              <input type="file" id="imp-file-input" accept=".csv,.pdf,.png,.jpg,.jpeg,.webp,.ofx" class="form-input" style="font-size:12.5px;" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Cartão / Conta de destino</label>
+            <div class="field-box">
+              <span class="field-prefix">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+              </span>
+              <select id="imp-target-account" class="form-select"></select>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-row-2" style="align-items:center;">
+          <label class="pro-checkbox-row" style="margin:0;">
+            <input type="checkbox" id="imp-project-installments" checked />
+            <span>Projetar parcelas futuras automaticamente nos próximos meses (Parcela X/Y → Y/Y)</span>
+          </label>
+
+          <div class="form-group" id="imp-api-key-wrap">
+            <label class="form-label">Chave Gemini API (opcional p/ CSV · usada em PDF/Foto e IA)</label>
+            <div class="field-box" style="height:38px;">
+              <span class="field-prefix">🔑</span>
+              <input type="password" id="imp-gemini-key" class="form-input" placeholder="Cole sua GEMINI_API_KEY (salva no navegador)" style="font-size:12px;" />
+            </div>
+          </div>
+        </div>
+
+        <div id="imp-status-banner" style="display:none; padding:10px 14px; border-radius:10px; font-size:12.5px; font-weight:500;"></div>
+
+        <!-- Barra de Resumo e Ações da Pré-visualização -->
+        <div id="imp-preview-section" style="display:none; flex-direction:column; gap:12px;">
+          <div class="tx-summary-strip" style="margin:0; justify-content:space-between; align-items:center;">
+            <div id="imp-summary-metrics" style="display:flex; gap:16px; flex-wrap:wrap; font-size:12.5px;"></div>
+            <button type="button" class="btn-secondary" id="btn-imp-ai-categorize" style="padding:6px 12px; font-size:11.5px; white-space:nowrap;">
+              ✨ Sugerir Categorias c/ IA (Desconhecidos)
+            </button>
+          </div>
+
+          <div class="table-responsive-wrap" style="max-height:340px; overflow-y:auto; border:1px solid var(--border-subtle); border-radius:12px;">
+            <table class="data-table" id="imp-review-table" style="font-size:12px;">
+              <thead>
+                <tr>
+                  <th style="width:32px;"><input type="checkbox" id="imp-check-all" checked /></th>
+                  <th style="width:118px;">Data</th>
+                  <th>Estabelecimento Limpo</th>
+                  <th style="width:105px;">Parcela</th>
+                  <th style="width:130px;">Classificação</th>
+                  <th style="width:155px;">Categoria</th>
+                  <th style="width:110px; text-align:right;">Valor (R$)</th>
+                </tr>
+              </thead>
+              <tbody id="imp-review-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <span id="imp-footer-hint" style="font-size:11.5px; color:var(--text-muted);">CSV é processado 100% localmente sem custo de API.</span>
+        <div class="modal-footer-right">
+          <button type="button" class="btn-secondary" data-close-modal="modal-import-invoice">Cancelar</button>
+          <button type="button" class="btn-primary" id="btn-confirm-import-invoice" disabled>Confirmar e Lançar Fatura</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast de Desfazer Edição em Lote -->
   <div id="undo-toast" role="status">
     <span id="undo-toast-msg">Alteração em lote aplicada.</span>

@@ -1359,9 +1359,8 @@ function renderTransacoesView() {
           <p class="vs-prev">Combine período, categoria, conta, tag ou texto e edite várias transações em lote.</p>
         </div>
         <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-          <input type="file" id="input-import-statement" accept=".csv,.ofx,.txt" style="display:none;" />
-          <button class="btn-secondary" id="btn-import-statement" title="Importar extrato ou fatura CSV / OFX do Nubank, Mercado Pago ou outros bancos">
-            ↑ Importar Extrato (CSV/OFX)
+          <button class="btn-secondary" id="btn-import-statement" title="Importar fatura ou extrato em CSV, PDF ou Imagem com revisão inteligente">
+            ↑ Importar Fatura (CSV/PDF/Foto)
           </button>
           <button class="btn-primary" id="btn-new-tx-page">+ Lançamento Rápido</button>
         </div>
@@ -1422,84 +1421,178 @@ function renderTransacoesView() {
   `;
 }
 
-function parseImportedStatementText(rawText, fileName = '') {
+// ============================================================
+// IMPORTADOR MULTIFORMATO DE FATURAS (CSV LOCAL + PDF/FOTO IA + TABELA EDITÁVEL)
+// ============================================================
+let invoiceReviewItems = [];
+let invoiceModalBound = false;
+
+const LOCAL_MERCHANT_KEYWORDS = [
+  { catName: /transporte/i, fallbackId: 'cat-transporte', words: ['uber', '99app', '99*', '99 pop', 'localiza', 'movida', 'unidas', 'sem parar', 'veloe', 'conectcar', 'posto', 'ipiranga', 'shell', 'petrobras', 'br mania', 'estapar', 'indigo', 'azul linhas', 'gol linhas', 'latam', 'onibus', 'metro', 'pedagio'] },
+  { catName: /delivery/i, fallbackId: 'cat-delivery', words: ['ifood', 'ifd*', 'ze delivery', 'rappi', '99food', 'aiqfome', 'james delivery'] },
+  { catName: /alimenta|mercado/i, fallbackId: 'cat-alimentacao', words: ['restaurante', 'lanchonete', 'padaria', 'panificadora', 'pizzaria', 'burger', 'mcdonalds', 'mc donalds', 'bk ', 'outback', 'madero', 'coco bambu', 'supermercado', 'mercado', 'atacadao', 'assai', 'carrefour', 'pao de acucar', 'extra ', 'mateus', 'zaffari', 'angeloni', 'hortifruti', 'acougue', 'cafe', 'starbucks', 'cacau show'] },
+  { catName: /assinatura|streaming/i, fallbackId: 'cat-assinaturas', words: ['netflix', 'spotify', 'amazon prime', 'prime video', 'disney', 'hbomax', 'max.com', 'youtube', 'apple.com/bill', 'google *', 'icloud', 'microsoft', 'chatgpt', 'openai', 'claude', 'canva', 'adobe', 'globoplay', 'audible', 'kindle'] },
+  { catName: /internet|telefon/i, fallbackId: 'cat-internet', words: ['claro', 'vivo', 'tim', 'oi ', 'algar', 'brisanet', 'starlink', 'net servicos', 'sky', 'desktop internet'] },
+  { catName: /sa[uú]de|farm[aá]cia/i, fallbackId: 'cat-saude', words: ['drogasil', 'droga raia', 'drogaria', 'pague menos', 'panvel', 'farmacia', 'unimed', 'hapvida', 'laboratorio', 'fleury', 'clinica', 'hospital', 'odonto', 'consulta', 'exame'] },
+  { catName: /moradia|casa/i, fallbackId: 'cat-moradia', words: ['enel', 'cemig', 'copel', 'cpfl', 'celpe', 'neoenergia', 'light', 'sabesp', 'sanepar', 'condominio', 'aluguel', 'quintoandar', 'leroy merlin', 'telhanorte', 'gas '] },
+  { catName: /educa/i, fallbackId: 'cat-educacao', words: ['alura', 'udemy', 'coursera', 'rocketseat', 'faculdade', 'escola', 'universidade', 'livraria', 'saraiva', 'leitura', 'curso'] },
+  { catName: /compras|shopping/i, fallbackId: 'cat-compras', words: ['mercado livre', 'mercadolivre', 'meli', 'mercadopago*', 'mp *', 'amazon', 'shopee', 'shein', 'aliexpress', 'magalu', 'magazine luiza', 'casas bahia', 'fast shop', 'kabum', 'pichau', 'renner', 'riachuelo', 'cea', 'zara', 'centauro', 'nike', 'adidas', 'decathlon', ' Zara'] },
+  { catName: /lazer/i, fallbackId: 'cat-lazer', words: ['ingresso', 'sympla', 'eventim', 'cinemark', 'cinepolis', 'uci', 'steam', 'playstation', 'xbox', 'nintendo', 'bar ', 'pub ', 'hotel', 'airbnb', 'booking'] }
+];
+
+function classifyMerchantLocally(titleText) {
+  const clean = String(titleText || '').trim();
+  if (!clean) {
+    return { categoryId: state.categories[0]?.id || 'cat-delivery', matchedByRule: false };
+  }
+  // 1. Regras personalizadas do usuário em Categorias
+  const userRuleCatId = matchCategoryByRules(clean);
+  if (userRuleCatId) {
+    return { categoryId: userRuleCatId, matchedByRule: true };
+  }
+  // 2. Dicionário local de estabelecimentos brasileiros conhecidos
+  const lower = clean.toLowerCase();
+  for (const group of LOCAL_MERCHANT_KEYWORDS) {
+    if (group.words.some(w => lower.includes(w.toLowerCase()))) {
+      const targetCat = state.categories.find(c => !c.archived && (c.id === group.fallbackId || group.catName.test(c.name)));
+      if (targetCat) {
+        return { categoryId: targetCat.id, matchedByRule: true };
+      }
+    }
+  }
+  const defaultCat = state.categories.find(c => !c.archived && /compras|outros/i.test(c.name)) || state.categories.find(c => !c.archived) || state.categories[0];
+  return { categoryId: defaultCat?.id || 'cat-delivery', matchedByRule: false };
+}
+
+function cleanBrazilianAmountToFloat(rawStr) {
+  if (rawStr === undefined || rawStr === null) return NaN;
+  if (typeof rawStr === 'number') return rawStr;
+  // Ex: "- 1.946,15" ou "243,75" ou "R$ 1.250,90" ou "-1946.15"
+  let s = String(rawStr).replace(/R\$/gi, '').replace(/\s+/g, '').trim();
+  if (!s) return NaN;
+  if (s.includes(',') && s.includes('.')) {
+    s = s.replace(/\./g, '').replace(',', '.');
+  } else if (s.includes(',')) {
+    s = s.replace(',', '.');
+  }
+  return parseFloat(s);
+}
+
+function extractInstallmentInfoFromTitle(rawTitle) {
+  const title = String(rawTitle || '').trim();
+  // Regex principal exigida: /^(.*?)\s*-\s*Parcela\s+(\d+)\/(\d+)$/i
+  const primaryRegex = /^(.*?)\s*-\s*Parcela\s+(\d+)\/(\d+)$/i;
+  const m1 = title.match(primaryRegex);
+  if (m1) {
+    const cur = Math.max(1, parseInt(m1[2], 10) || 1);
+    const tot = Math.max(cur, parseInt(m1[3], 10) || 1);
+    return { cleanTitle: m1[1].trim() || title, currentInstallment: cur, totalInstallments: tot };
+  }
+  // Fallback para outros formatos comuns ("Loja X - 02/10", "Loja X (2/10)", "Loja X Parcela 2/10")
+  const fallbackRegex = /^(.*?)\s*(?:-\s*|\bParcela\s+|\()(\d{1,2})\/(\d{1,2})\)?$/i;
+  const m2 = title.match(fallbackRegex);
+  if (m2 && m2[1].trim().length >= 2) {
+    const cur = Math.max(1, parseInt(m2[2], 10) || 1);
+    const tot = Math.max(cur, parseInt(m2[3], 10) || 1);
+    if (tot >= 2 && tot <= 48 && cur <= tot) {
+      return { cleanTitle: m2[1].trim(), currentInstallment: cur, totalInstallments: tot };
+    }
+  }
+  return { cleanTitle: title, currentInstallment: 1, totalInstallments: 1 };
+}
+
+function detectEntryKind(rawTitle, floatAmount, isCreditCardBill = true) {
+  const t = String(rawTitle || '').toLowerCase();
+  if (/pagamento\s+recebido|pagamento\s+de\s+fatura|pagamento\s+efetuado|inclus[aã]o\s+de\s+pagamento|fatura\s+paga|pagamento\s+em\s+/i.test(t)) {
+    return 'payment';
+  }
+  if (/\bestorno\b|cr[eé]dito\s+de|desconto\s+antecipa|reembolso|cancelamento/i.test(t)) {
+    return 'refund';
+  }
+  if (isCreditCardBill && floatAmount < 0) {
+    return 'refund';
+  }
+  return 'purchase';
+}
+
+function parseInvoiceCSVOrOFXLocally(rawText, fileName = '') {
   const text = (rawText || '').trim();
   if (!text) return [];
-  const items = [];
-  const defaultYearMonth = state.selectedMonth || getTodayISO().slice(0, 7);
+  const defaultYM = state.selectedMonth || getTodayISO().slice(0, 7);
+  const out = [];
 
-  // 1. Formato OFX (<STMTTRN>...</STMTTRN>)
+  // Suporte OFX
   if (/<STMTTRN>/i.test(text) || fileName.toLowerCase().endsWith('.ofx')) {
     const blocks = text.split(/<STMTTRN>/i).slice(1);
     blocks.forEach((blk, idx) => {
-      const amtMatch = blk.match(/<TRNAMT>\s*([+-]?[\d.,]+)/i);
+      const amtMatch = blk.match(/<TRNAMT>\s*([+-]?[\d.,\s-]+)/i);
       const dtMatch = blk.match(/<DTPOSTED>\s*(\d{8})/i);
       const memoMatch = blk.match(/<(?:MEMO|NAME)>\s*([^<\r\n]+)/i);
-      const idMatch = blk.match(/<FITID>\s*([^<\r\n]+)/i);
       if (!amtMatch) return;
-      const rawVal = parseFloat(amtMatch[1].replace(',', '.'));
-      if (isNaN(rawVal) || rawVal === 0) return;
-      let dateISO = `${defaultYearMonth}-10`;
+      const valFloat = cleanBrazilianAmountToFloat(amtMatch[1]);
+      if (isNaN(valFloat) || valFloat === 0) return;
+      let dateISO = `${defaultYM}-10`;
       if (dtMatch && dtMatch[1].length === 8) {
         const d = dtMatch[1];
         dateISO = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
       }
-      const desc = (memoMatch ? memoMatch[1].trim() : `Lançamento OFX #${idx + 1}`);
-      items.push({
-        externalId: idMatch ? `ofx-${idMatch[1].trim()}` : null,
+      const rawTitle = memoMatch ? memoMatch[1].trim() : `Lançamento #${idx + 1}`;
+      const inst = extractInstallmentInfoFromTitle(rawTitle);
+      const entryKind = detectEntryKind(rawTitle, valFloat, false);
+      const cls = classifyMerchantLocally(inst.cleanTitle);
+      out.push({
+        id: 'rev-' + idx,
+        include: entryKind !== 'payment',
         date: dateISO,
-        description: desc,
-        amountCents: Math.round(Math.abs(rawVal) * 100),
-        type: rawVal < 0 ? 'expense' : 'income'
+        cleanTitle: inst.cleanTitle,
+        currentInstallment: inst.currentInstallment,
+        totalInstallments: inst.totalInstallments,
+        amount: Math.abs(valFloat),
+        entryKind,
+        categoryId: cls.categoryId,
+        matchedByRule: cls.matchedByRule
       });
     });
-    return items;
+    return out;
   }
 
-  // 2. Formato CSV (Nubank, Mercado Pago, Inter, Itaú, genérico)
+  // Parse CSV (ex: Nubank date,title,amount ou date,category,title,amount)
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   if (lines.length < 2) return [];
   const sep = lines[0].includes(';') ? ';' : ',';
   const splitCSV = (line) => {
-    const out = [];
+    const cols = [];
     let cur = '';
     let inQuotes = false;
     for (let i = 0; i < line.length; i++) {
       const ch = line[i];
       if (ch === '"') { inQuotes = !inQuotes; continue; }
-      if (ch === sep && !inQuotes) { out.push(cur.trim()); cur = ''; continue; }
+      if (ch === sep && !inQuotes) { cols.push(cur.trim()); cur = ''; continue; }
       cur += ch;
     }
-    out.push(cur.trim());
-    return out;
+    cols.push(cur.trim());
+    return cols;
   };
 
   const headers = splitCSV(lines[0]).map(h => h.toLowerCase());
-  const dateIdx = headers.findIndex(h => /date|data|dt|release_date/.test(h));
-  const descIdx = headers.findIndex(h => /title|descri|hist|memo|estabelecimento|transaction_type|nome/.test(h));
-  const amtIdx = headers.findIndex(h => /amount|valor|value|net_amount|quantia/.test(h));
-  const idIdx = headers.findIndex(h => /id|identificador|reference/.test(h));
+  const dateIdx = headers.findIndex(h => /^date$|^data$|release_date|dt/.test(h));
+  const titleIdx = headers.findIndex(h => /^title$|descri|estabelecimento|hist|memo|nome/.test(h));
+  const amtIdx = headers.findIndex(h => /^amount$|^valor$|value|net_amount|quantia/.test(h));
 
-  const isCreditCardBill = headers.includes('title') && headers.includes('amount') && !headers.includes('identificador');
+  // No CSV de fatura de cartão do Nubank (date,title,amount), compras são positivas e estornos/pagamentos são negativos
+  const isNubankCardCSV = headers.includes('date') && headers.includes('title') && headers.includes('amount');
 
   for (let i = 1; i < lines.length; i++) {
     const cols = splitCSV(lines[i]);
     if (cols.length < 2) continue;
     const rawDate = cols[dateIdx >= 0 ? dateIdx : 0] || '';
-    const rawDesc = cols[descIdx >= 0 ? descIdx : Math.min(1, cols.length - 1)] || `Item importado #${i}`;
-    const rawAmtStr = cols[amtIdx >= 0 ? amtIdx : (cols.length - 1)] || '';
-    const extId = idIdx >= 0 ? cols[idIdx] : null;
+    const rawTitle = cols[titleIdx >= 0 ? titleIdx : Math.min(1, cols.length - 1)] || `Item #${i}`;
+    const rawAmt = cols[amtIdx >= 0 ? amtIdx : (cols.length - 1)] || '';
 
-    let cleanAmt = rawAmtStr.replace(/[R$\s]/g, '');
-    if (cleanAmt.includes(',') && cleanAmt.includes('.')) {
-      cleanAmt = cleanAmt.replace(/\./g, '').replace(',', '.');
-    } else if (cleanAmt.includes(',')) {
-      cleanAmt = cleanAmt.replace(',', '.');
-    }
-    const numVal = parseFloat(cleanAmt);
-    if (isNaN(numVal) || numVal === 0) continue;
+    const valFloat = cleanBrazilianAmountToFloat(rawAmt);
+    if (isNaN(valFloat) || valFloat === 0) continue;
 
-    let dateISO = `${defaultYearMonth}-10`;
+    let dateISO = `${defaultYM}-10`;
     if (/^\d{4}-\d{2}-\d{2}/.test(rawDate)) {
       dateISO = rawDate.slice(0, 10);
     } else if (/^\d{2}\/\d{2}\/\d{4}/.test(rawDate)) {
@@ -1510,19 +1603,552 @@ function parseImportedStatementText(rawText, fileName = '') {
       dateISO = `${yyyy}-${mm}-${dd}`;
     }
 
-    // Fatura CSV do Nubank (date,category,title,amount) traz compras como valores positivos
-    const type = isCreditCardBill ? (numVal > 0 ? 'expense' : 'income') : (numVal < 0 ? 'expense' : 'income');
+    const inst = extractInstallmentInfoFromTitle(rawTitle);
+    const entryKind = detectEntryKind(rawTitle, valFloat, isNubankCardCSV || true);
+    const cls = classifyMerchantLocally(inst.cleanTitle);
 
-    items.push({
-      externalId: extId ? `csv-${extId}` : null,
+    out.push({
+      id: 'rev-' + i,
+      include: entryKind !== 'payment',
       date: dateISO,
-      description: rawDesc,
-      amountCents: Math.round(Math.abs(numVal) * 100),
-      type,
-      isCardBill: isCreditCardBill
+      cleanTitle: inst.cleanTitle,
+      currentInstallment: inst.currentInstallment,
+      totalInstallments: inst.totalInstallments,
+      amount: Math.abs(valFloat),
+      entryKind,
+      categoryId: cls.categoryId,
+      matchedByRule: cls.matchedByRule
     });
   }
-  return items;
+  return out;
+}
+
+function setImportStatusBanner(msg, type = 'info') {
+  const banner = document.getElementById('imp-status-banner');
+  if (!banner) return;
+  if (!msg) {
+    banner.style.display = 'none';
+    return;
+  }
+  banner.style.display = 'block';
+  banner.style.background = type === 'error' ? 'var(--coral-soft)' : type === 'success' ? 'var(--green-soft)' : 'rgba(56, 182, 255, 0.14)';
+  banner.style.color = type === 'error' ? 'var(--coral-red)' : type === 'success' ? 'var(--green-emerald)' : 'var(--cyan-accent)';
+  banner.textContent = msg;
+}
+
+function renderInvoiceReviewTable() {
+  const previewSec = document.getElementById('imp-preview-section');
+  const tbody = document.getElementById('imp-review-tbody');
+  const metricsEl = document.getElementById('imp-summary-metrics');
+  const confirmBtn = document.getElementById('btn-confirm-import-invoice');
+  const aiBtn = document.getElementById('btn-imp-ai-categorize');
+  if (!previewSec || !tbody || !metricsEl || !confirmBtn) return;
+
+  if (invoiceReviewItems.length === 0) {
+    previewSec.style.display = 'none';
+    confirmBtn.disabled = true;
+    return;
+  }
+
+  previewSec.style.display = 'flex';
+  const activeCats = state.categories.filter(c => !c.archived);
+  const projectFuture = Boolean(document.getElementById('imp-project-installments')?.checked);
+
+  let totalPurchaseCents = 0;
+  let totalRefundCents = 0;
+  let ignoredPaymentsCount = 0;
+  let futureProjectedCount = 0;
+  let unknownMerchantsCount = 0;
+  let selectedActiveCount = 0;
+
+  invoiceReviewItems.forEach(item => {
+    if (!item.matchedByRule && item.entryKind === 'purchase') unknownMerchantsCount++;
+    if (item.entryKind === 'payment' || !item.include) {
+      if (item.entryKind === 'payment') ignoredPaymentsCount++;
+      return;
+    }
+    selectedActiveCount++;
+    const cents = Math.round((Number(item.amount) || 0) * 100);
+    if (item.entryKind === 'refund') {
+      totalRefundCents += cents;
+    } else {
+      totalPurchaseCents += cents;
+      if (projectFuture && item.totalInstallments > item.currentInstallment) {
+        futureProjectedCount += (item.totalInstallments - item.currentInstallment);
+      }
+    }
+  });
+
+  const netInvoiceCents = Math.max(0, totalPurchaseCents - totalRefundCents);
+
+  metricsEl.innerHTML = `
+    <span>Compras: <b style="color:var(--coral-red);">${fmtBRL(totalPurchaseCents)}</b></span>
+    <span>Estornos Abatidos: <b style="color:var(--green-emerald);">-${fmtBRL(totalRefundCents)}</b></span>
+    <span>Líquido na Fatura: <b>${fmtBRL(netInvoiceCents)}</b></span>
+    <span>Pagamentos ignorados: <b>${ignoredPaymentsCount}</b></span>
+    ${projectFuture && futureProjectedCount > 0 ? `<span style="color:#a78bfa;">Parcelas futuras a projetar: <b>+${futureProjectedCount}</b></span>` : ''}
+  `;
+
+  if (aiBtn) {
+    aiBtn.textContent = unknownMerchantsCount > 0
+      ? `✨ Sugerir Categorias c/ IA (${unknownMerchantsCount} desconhecido${unknownMerchantsCount > 1 ? 's' : ''})`
+      : '✨ Reclassificar Tudo c/ IA';
+  }
+
+  confirmBtn.disabled = selectedActiveCount === 0;
+  confirmBtn.textContent = `Confirmar e Lançar (${selectedActiveCount} item${selectedActiveCount === 1 ? '' : 's'})`;
+
+  tbody.innerHTML = invoiceReviewItems.map((it, idx) => {
+    const catOptions = activeCats.map(c => `<option value="${c.id}" ${c.id === it.categoryId ? 'selected' : ''}>${c.name}</option>`).join('');
+    const isPayment = it.entryKind === 'payment';
+    const isRefund = it.entryKind === 'refund';
+    const rowOpacity = !it.include ? 'opacity:0.52;' : '';
+    const futureRest = it.totalInstallments > it.currentInstallment ? (it.totalInstallments - it.currentInstallment) : 0;
+
+    return `
+      <tr style="${rowOpacity}">
+        <td>
+          <input type="checkbox" class="imp-row-check" data-imp-idx="${idx}" ${it.include ? 'checked' : ''} />
+        </td>
+        <td>
+          <input type="date" class="form-input imp-row-date" data-imp-idx="${idx}" value="${it.date}" style="padding:5px 7px; font-size:11.5px;" />
+        </td>
+        <td>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <input type="text" class="form-input imp-row-title" data-imp-idx="${idx}" value="${it.cleanTitle.replace(/"/g, '&quot;')}" style="padding:5px 8px; font-size:12px; font-weight:600;" />
+            ${!it.matchedByRule && it.entryKind === 'purchase' ? `<span class="tag-pill" title="Estabelecimento sem regra local — revise ou clique em Sugerir c/ IA" style="font-size:10px; color:var(--amber-gold);">Novo</span>` : ''}
+          </div>
+        </td>
+        <td>
+          <div style="display:flex; align-items:center; gap:4px;">
+            <input type="number" min="1" max="48" class="form-input imp-row-cur-inst" data-imp-idx="${idx}" value="${it.currentInstallment}" style="width:42px; padding:4px 5px; font-size:11.5px; text-align:center;" />
+            <span style="color:var(--text-muted);">/</span>
+            <input type="number" min="1" max="48" class="form-input imp-row-tot-inst" data-imp-idx="${idx}" value="${it.totalInstallments}" style="width:42px; padding:4px 5px; font-size:11.5px; text-align:center;" />
+          </div>
+          ${futureRest > 0 && projectFuture ? `<div style="font-size:10px; color:#a78bfa; margin-top:2px;">+${futureRest} mês(es)</div>` : ''}
+        </td>
+        <td>
+          <select class="form-select imp-row-kind" data-imp-idx="${idx}" style="padding:5px 7px; font-size:11.5px; color:${isPayment ? 'var(--text-muted)' : isRefund ? 'var(--green-emerald)' : 'var(--text-main)'};">
+            <option value="purchase" ${it.entryKind === 'purchase' ? 'selected' : ''}>Compra (+)</option>
+            <option value="refund" ${it.entryKind === 'refund' ? 'selected' : ''}>Estorno (-)</option>
+            <option value="payment" ${it.entryKind === 'payment' ? 'selected' : ''}>Pagto Fatura (Ignorar)</option>
+          </select>
+        </td>
+        <td>
+          <select class="form-select imp-row-cat" data-imp-idx="${idx}" style="padding:5px 7px; font-size:11.5px;" ${isPayment ? 'disabled' : ''}>
+            ${catOptions}
+          </select>
+        </td>
+        <td style="text-align:right;">
+          <input type="number" step="0.01" min="0.01" class="form-input imp-row-amt" data-imp-idx="${idx}" value="${Number(it.amount).toFixed(2)}" style="padding:5px 7px; font-size:12px; font-weight:700; text-align:right; color:${isRefund ? 'var(--green-emerald)' : 'var(--coral-red)'};" />
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  // Bind eventos de edição em tempo real nas células
+  tbody.querySelectorAll('.imp-row-check').forEach(el => {
+    el.addEventListener('change', (e) => {
+      const i = Number(el.dataset.impIdx);
+      if (invoiceReviewItems[i]) {
+        invoiceReviewItems[i].include = e.target.checked;
+        renderInvoiceReviewTable();
+      }
+    });
+  });
+
+  tbody.querySelectorAll('.imp-row-date').forEach(el => {
+    el.addEventListener('change', (e) => {
+      const i = Number(el.dataset.impIdx);
+      if (invoiceReviewItems[i]) invoiceReviewItems[i].date = e.target.value;
+    });
+  });
+
+  tbody.querySelectorAll('.imp-row-title').forEach(el => {
+    el.addEventListener('input', (e) => {
+      const i = Number(el.dataset.impIdx);
+      if (invoiceReviewItems[i]) invoiceReviewItems[i].cleanTitle = e.target.value;
+    });
+  });
+
+  tbody.querySelectorAll('.imp-row-cur-inst').forEach(el => {
+    el.addEventListener('change', (e) => {
+      const i = Number(el.dataset.impIdx);
+      if (invoiceReviewItems[i]) {
+        invoiceReviewItems[i].currentInstallment = Math.max(1, parseInt(e.target.value, 10) || 1);
+        if (invoiceReviewItems[i].totalInstallments < invoiceReviewItems[i].currentInstallment) {
+          invoiceReviewItems[i].totalInstallments = invoiceReviewItems[i].currentInstallment;
+        }
+        renderInvoiceReviewTable();
+      }
+    });
+  });
+
+  tbody.querySelectorAll('.imp-row-tot-inst').forEach(el => {
+    el.addEventListener('change', (e) => {
+      const i = Number(el.dataset.impIdx);
+      if (invoiceReviewItems[i]) {
+        invoiceReviewItems[i].totalInstallments = Math.max(invoiceReviewItems[i].currentInstallment, parseInt(e.target.value, 10) || 1);
+        renderInvoiceReviewTable();
+      }
+    });
+  });
+
+  tbody.querySelectorAll('.imp-row-kind').forEach(el => {
+    el.addEventListener('change', (e) => {
+      const i = Number(el.dataset.impIdx);
+      if (invoiceReviewItems[i]) {
+        invoiceReviewItems[i].entryKind = e.target.value;
+        invoiceReviewItems[i].include = e.target.value !== 'payment';
+        renderInvoiceReviewTable();
+      }
+    });
+  });
+
+  tbody.querySelectorAll('.imp-row-cat').forEach(el => {
+    el.addEventListener('change', (e) => {
+      const i = Number(el.dataset.impIdx);
+      if (invoiceReviewItems[i]) {
+        invoiceReviewItems[i].categoryId = e.target.value;
+        invoiceReviewItems[i].matchedByRule = true;
+      }
+    });
+  });
+
+  tbody.querySelectorAll('.imp-row-amt').forEach(el => {
+    el.addEventListener('change', (e) => {
+      const i = Number(el.dataset.impIdx);
+      const v = parseFloat(e.target.value);
+      if (invoiceReviewItems[i] && !isNaN(v) && v > 0) {
+        invoiceReviewItems[i].amount = v;
+        renderInvoiceReviewTable();
+      }
+    });
+  });
+}
+
+function openImportInvoiceModal(preselectedAccountId = null) {
+  const modal = document.getElementById('modal-import-invoice');
+  if (!modal) return;
+
+  const accSelect = document.getElementById('imp-target-account');
+  if (accSelect) {
+    accSelect.innerHTML = state.accounts
+      .map(a => `<option value="${a.id}">${a.name} (${a.type})</option>`)
+      .join('');
+    if (preselectedAccountId && state.accounts.some(a => a.id === preselectedAccountId)) {
+      accSelect.value = preselectedAccountId;
+    } else if (state.lastUsedAccountId && state.accounts.some(a => a.id === state.lastUsedAccountId)) {
+      accSelect.value = state.lastUsedAccountId;
+    }
+  }
+
+  const keyInput = document.getElementById('imp-gemini-key');
+  if (keyInput && typeof window !== 'undefined') {
+    keyInput.value = window.localStorage.getItem('farol_gemini_api_key') || '';
+  }
+
+  const fileInput = document.getElementById('imp-file-input');
+  if (fileInput) fileInput.value = '';
+  invoiceReviewItems = [];
+  setImportStatusBanner('');
+  renderInvoiceReviewTable();
+  bindImportInvoiceModalEvents();
+  modal.classList.add('open');
+}
+
+function bindImportInvoiceModalEvents() {
+  if (invoiceModalBound) return;
+  invoiceModalBound = true;
+
+  const fileInput = document.getElementById('imp-file-input');
+  const projCheck = document.getElementById('imp-project-installments');
+  const checkAll = document.getElementById('imp-check-all');
+  const aiCatBtn = document.getElementById('btn-imp-ai-categorize');
+  const confirmBtn = document.getElementById('btn-confirm-import-invoice');
+  const keyInput = document.getElementById('imp-gemini-key');
+
+  if (keyInput) {
+    keyInput.addEventListener('change', () => {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('farol_gemini_api_key', keyInput.value.trim());
+      }
+    });
+  }
+
+  if (projCheck) {
+    projCheck.addEventListener('change', () => renderInvoiceReviewTable());
+  }
+
+  if (checkAll) {
+    checkAll.addEventListener('change', (e) => {
+      invoiceReviewItems.forEach(it => {
+        if (it.entryKind !== 'payment') it.include = e.target.checked;
+      });
+      renderInvoiceReviewTable();
+    });
+  }
+
+  if (fileInput) {
+    fileInput.addEventListener('change', async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const lowerName = file.name.toLowerCase();
+
+      // 1. Arquivos CSV ou OFX -> Parse 100% via código local (custo zero de IA)
+      if (lowerName.endsWith('.csv') || lowerName.endsWith('.ofx') || lowerName.endsWith('.txt')) {
+        setImportStatusBanner(`Lendo "${file.name}" localmente...`, 'info');
+        const reader = new FileReader();
+        reader.onload = () => {
+          const parsed = parseInvoiceCSVOrOFXLocally(String(reader.result || ''), file.name);
+          if (parsed.length === 0) {
+            setImportStatusBanner('Nenhum lançamento identificado no CSV. Verifique se o arquivo possui colunas date, title e amount.', 'error');
+            return;
+          }
+          invoiceReviewItems = parsed;
+          setImportStatusBanner(`✓ ${parsed.length} lançamento(s) extraídos localmente de "${file.name}". Revise a tabela abaixo antes de confirmar.`, 'success');
+          renderInvoiceReviewTable();
+        };
+        reader.readAsText(file);
+        return;
+      }
+
+      // 2. Arquivos PDF ou Imagem (.pdf, .png, .jpg, .webp) -> OCR Multimodal via Gemini API
+      const apiKey = document.getElementById('imp-gemini-key')?.value?.trim() || '';
+      if (apiKey && typeof window !== 'undefined') {
+        window.localStorage.setItem('farol_gemini_api_key', apiKey);
+      }
+
+      setImportStatusBanner(`Extraindo dados da fatura "${file.name}" via Visão/OCR Inteligente...`, 'info');
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const dataUrl = String(reader.result || '');
+          const base64Data = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+          const mimeType = file.type || (lowerName.endsWith('.pdf') ? 'application/pdf' : 'image/png');
+          const defaultYear = (state.selectedMonth || '2026-11').split('-')[0];
+
+          const res = await fetch('/api/import-invoice', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              mode: 'extract',
+              apiKey,
+              fileDataBase64: base64Data,
+              mimeType,
+              defaultYear,
+              categories: state.categories.filter(c => !c.archived).map(c => ({ id: c.id, name: c.name }))
+            })
+          });
+          const data = await res.json();
+          if (!res.ok || !data.ok) {
+            setImportStatusBanner(data.error || 'Não foi possível extrair os dados do PDF/Imagem.', 'error');
+            return;
+          }
+
+          const rawItems = Array.isArray(data.items) ? data.items : [];
+          invoiceReviewItems = rawItems.map((it, idx) => {
+            const localCls = classifyMerchantLocally(it.cleanTitle);
+            const validCatId = state.categories.some(c => c.id === it.suggestedCategoryId)
+              ? it.suggestedCategoryId
+              : localCls.categoryId;
+            const kind = ['purchase', 'refund', 'payment'].includes(it.entryKind)
+              ? it.entryKind
+              : detectEntryKind(it.cleanTitle, Number(it.amount) || 0, true);
+            return {
+              id: 'ocr-' + idx,
+              include: kind !== 'payment',
+              date: /^\d{4}-\d{2}-\d{2}/.test(it.date || '') ? it.date.slice(0, 10) : `${state.selectedMonth}-10`,
+              cleanTitle: String(it.cleanTitle || `Item #${idx + 1}`).trim(),
+              currentInstallment: Math.max(1, parseInt(it.currentInstallment, 10) || 1),
+              totalInstallments: Math.max(1, parseInt(it.totalInstallments, 10) || 1),
+              amount: Math.abs(Number(it.amount) || 0),
+              entryKind: kind,
+              categoryId: localCls.matchedByRule ? localCls.categoryId : validCatId,
+              matchedByRule: true
+            };
+          });
+
+          setImportStatusBanner(`✓ ${invoiceReviewItems.length} lançamento(s) extraídos via OCR de "${file.name}". Revise antes de salvar.`, 'success');
+          renderInvoiceReviewTable();
+        } catch {
+          setImportStatusBanner('Erro ao enviar documento para leitura OCR.', 'error');
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  if (aiCatBtn) {
+    aiCatBtn.addEventListener('click', async () => {
+      if (invoiceReviewItems.length === 0) return;
+      const apiKey = document.getElementById('imp-gemini-key')?.value?.trim() || '';
+      if (apiKey && typeof window !== 'undefined') {
+        window.localStorage.setItem('farol_gemini_api_key', apiKey);
+      }
+      const unknownItems = invoiceReviewItems.filter(it => !it.matchedByRule && it.entryKind === 'purchase');
+      const targetList = unknownItems.length > 0 ? unknownItems : invoiceReviewItems.filter(it => it.entryKind === 'purchase');
+      const uniqueMerchants = [...new Set(targetList.map(it => it.cleanTitle))];
+      if (uniqueMerchants.length === 0) return;
+
+      setImportStatusBanner(`Classificando ${uniqueMerchants.length} estabelecimento(s) com IA...`, 'info');
+      try {
+        const res = await fetch('/api/import-invoice', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode: 'categorize',
+            apiKey,
+            merchants: uniqueMerchants,
+            categories: state.categories.filter(c => !c.archived).map(c => ({ id: c.id, name: c.name }))
+          })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          setImportStatusBanner(data.error || 'Não foi possível categorizar com IA.', 'error');
+          return;
+        }
+        const mappings = data.mappings || {};
+        let updatedCount = 0;
+        invoiceReviewItems.forEach(it => {
+          const sug = mappings[it.cleanTitle];
+          if (sug && state.categories.some(c => c.id === sug)) {
+            it.categoryId = sug;
+            it.matchedByRule = true;
+            updatedCount++;
+          }
+        });
+        setImportStatusBanner(`✓ ${updatedCount} lançamento(s) categorizados automaticamente pela IA!`, 'success');
+        renderInvoiceReviewTable();
+      } catch {
+        setImportStatusBanner('Erro ao consultar o classificador IA.', 'error');
+      }
+    });
+  }
+
+  if (confirmBtn) {
+    confirmBtn.addEventListener('click', () => {
+      const targetAccId = document.getElementById('imp-target-account')?.value || state.accounts[0]?.id || 'acc-nubank';
+      const targetAcc = getAccountById(targetAccId);
+      const projectFuture = Boolean(document.getElementById('imp-project-installments')?.checked);
+      const selectedRows = invoiceReviewItems.filter(it => it.include && it.entryKind !== 'payment');
+      if (selectedRows.length === 0) return;
+
+      undoSnapshot = JSON.parse(JSON.stringify(state.transactions));
+      let addedCurrent = 0;
+      let addedFuture = 0;
+      let addedRefunds = 0;
+
+      selectedRows.forEach((row, idx) => {
+        const amountCents = Math.round((Number(row.amount) || 0) * 100);
+        if (amountCents <= 0) return;
+        const curInst = Math.max(1, Number(row.currentInstallment) || 1);
+        const totInst = Math.max(curInst, Number(row.totalInstallments) || 1);
+        const baseDate = /^\d{4}-\d{2}-\d{2}/.test(row.date || '') ? row.date.slice(0, 10) : `${state.selectedMonth}-10`;
+        const baseYM = baseDate.slice(0, 7);
+        const baseDayStr = baseDate.slice(8, 10) || '10';
+
+        // 1. Estornos: abatem o valor da fatura e registram o crédito
+        if (row.entryKind === 'refund') {
+          const invYM = getInvoiceMonthForTransaction({ date: baseDate, method: 'Cartão de Crédito', type: 'expense' }, targetAcc);
+          const curMeta = getInvoiceMeta(targetAcc.id, invYM);
+          setInvoiceMeta(targetAcc.id, {
+            adjustmentCents: (Number(curMeta.adjustmentCents) || 0) - amountCents
+          }, invYM);
+
+          state.transactions.push({
+            id: `tx-refund-${Date.now()}-${idx}`,
+            type: 'income',
+            amountCents,
+            description: `Estorno Fatura: ${row.cleanTitle}`,
+            tag: 'estorno',
+            categoryId: row.categoryId,
+            accountId: targetAcc.id,
+            date: baseDate,
+            method: 'Estorno Cartão'
+          });
+          addedRefunds++;
+          return;
+        }
+
+        // 2. Compras à vista ou parceladas (Parcela X/Y)
+        const descCur = totInst > 1 ? `${row.cleanTitle} (${curInst}/${totInst})` : row.cleanTitle;
+        const groupId = totInst > 1 ? `instgrp-${Date.now()}-${idx}` : undefined;
+
+        const isDupCur = state.transactions.some(t =>
+          t.accountId === targetAcc.id &&
+          t.date === baseDate &&
+          t.amountCents === amountCents &&
+          (t.description || '').toLowerCase() === descCur.toLowerCase()
+        );
+        if (!isDupCur) {
+          state.transactions.push({
+            id: `tx-imp-${Date.now()}-${idx}`,
+            installmentGroupId: groupId,
+            installmentIndex: curInst,
+            installmentTotal: totInst,
+            type: 'expense',
+            amountCents,
+            description: descCur,
+            tag: totInst > 1 ? 'parcelado' : 'fatura',
+            categoryId: row.categoryId,
+            accountId: targetAcc.id,
+            date: baseDate,
+            method: 'Cartão de Crédito'
+          });
+          addedCurrent++;
+        }
+
+        // 3. Projeção automática das parcelas restantes (X+1/Y até Y/Y) nos próximos meses
+        if (projectFuture && totInst > curInst) {
+          const remaining = totInst - curInst;
+          for (let step = 1; step <= remaining; step++) {
+            const nextInstNum = curInst + step;
+            const futureYM = addMonthsYM(baseYM, step);
+            const futureDate = `${futureYM}-${baseDayStr}`;
+            const futureDesc = `${row.cleanTitle} (${nextInstNum}/${totInst})`;
+
+            const isDupFuture = state.transactions.some(t =>
+              t.accountId === targetAcc.id &&
+              (t.date || '').startsWith(futureYM) &&
+              t.amountCents === amountCents &&
+              (t.description || '').toLowerCase() === futureDesc.toLowerCase()
+            );
+            if (!isDupFuture) {
+              state.transactions.push({
+                id: `tx-imp-fut-${Date.now()}-${idx}-${step}`,
+                installmentGroupId: groupId,
+                installmentIndex: nextInstNum,
+                installmentTotal: totInst,
+                type: 'expense',
+                amountCents,
+                description: futureDesc,
+                tag: 'parcelado',
+                categoryId: row.categoryId,
+                accountId: targetAcc.id,
+                date: futureDate,
+                method: 'Cartão de Crédito'
+              });
+              addedFuture++;
+            }
+          }
+        }
+      });
+
+      state.lastUsedAccountId = targetAcc.id;
+      if (selectedRows[0]?.date) {
+        state.selectedMonth = selectedRows[0].date.slice(0, 7);
+      }
+      saveState();
+      document.getElementById('modal-import-invoice')?.classList.remove('open');
+      renderApp();
+      showUndoToast(
+        `Fatura importada: ${addedCurrent} compra(s)` +
+        (addedFuture > 0 ? `, +${addedFuture} parcela(s) futura(s)` : '') +
+        (addedRefunds > 0 ? ` e ${addedRefunds} estorno(s)` : '') + '.'
+      );
+    });
+  }
 }
 
 function bindTransacoesEvents() {
@@ -1530,82 +2156,8 @@ function bindTransacoesEvents() {
   if (newBtn) newBtn.addEventListener('click', () => openTransactionModal());
 
   const importBtn = document.getElementById('btn-import-statement');
-  const importInput = document.getElementById('input-import-statement');
-  if (importBtn && importInput) {
-    importBtn.addEventListener('click', () => importInput.click());
-    importInput.addEventListener('change', (e) => {
-      const file = e.target.files && e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        const parsed = parseImportedStatementText(String(reader.result || ''), file.name);
-        importInput.value = '';
-        if (parsed.length === 0) {
-          openDialogModal({
-            title: 'Nenhum lançamento encontrado',
-            message: 'Não foi possível identificar linhas válidas neste arquivo. Use um arquivo .CSV ou .OFX exportado do Nubank, Mercado Pago ou do seu banco.',
-            confirmLabel: 'Entendi',
-            onConfirm: () => {}
-          });
-          return;
-        }
-        const defaultAccName = state.accounts[0]?.name || 'Nubank';
-        openDialogModal({
-          title: `Importar ${parsed.length} lançamento(s)`,
-          message: `Foram identificados ${parsed.length} lançamentos em "${file.name}". Digite o nome da conta/cartão de destino (ex: ${state.accounts.map(a => a.name).join(', ')}):`,
-          inputLabel: 'Conta ou Cartão de destino',
-          inputType: 'text',
-          defaultValue: defaultAccName,
-          placeholder: defaultAccName,
-          confirmLabel: 'Importar Agora',
-          onConfirm: (accNameInput) => {
-            const targetAcc = state.accounts.find(
-              a => a.name.toLowerCase().includes((accNameInput || '').trim().toLowerCase())
-            ) || state.accounts[0];
-            if (!targetAcc) return;
-
-            undoSnapshot = JSON.parse(JSON.stringify(state.transactions));
-            let importedCount = 0;
-
-            parsed.forEach((item, idx) => {
-              const isDup = state.transactions.some(t =>
-                (item.externalId && t.externalId === item.externalId) ||
-                (t.date === item.date && t.amountCents === item.amountCents && (t.description || '').toLowerCase() === item.description.toLowerCase())
-              );
-              if (isDup) return;
-
-              const matchedCatId = matchCategoryByRules(item.description)
-                || (item.type === 'income' ? 'cat-receita' : (state.categories[0]?.id || 'cat-delivery'));
-              const method = (item.isCardBill || targetAcc.type === 'Cartão de Crédito')
-                ? 'Cartão de Crédito'
-                : 'Conta Corrente / Pix';
-
-              state.transactions.push({
-                id: 'tx-imp-' + Date.now() + '-' + idx,
-                externalId: item.externalId || undefined,
-                type: item.type,
-                amountCents: item.amountCents,
-                description: item.description,
-                tag: 'importado',
-                categoryId: matchedCatId,
-                accountId: targetAcc.id,
-                date: item.date,
-                method
-              });
-              importedCount++;
-            });
-
-            if (importedCount > 0 && parsed[0]?.date) {
-              state.selectedMonth = parsed[0].date.slice(0, 7);
-            }
-            saveState();
-            renderApp();
-            showUndoToast(`${importedCount} lançamento(s) importado(s) com sucesso.`);
-          }
-        });
-      };
-      reader.readAsText(file);
-    });
+  if (importBtn) {
+    importBtn.addEventListener('click', () => openImportInvoiceModal());
   }
 
   const searchInput = document.getElementById('filter-search');
@@ -2146,8 +2698,11 @@ function renderFaturasView() {
           ${invoiceItems}
         </div>
 
-        <div class="fatura-card-actions">
-          <button class="btn-secondary" data-add-tx-account="${acc.id}">+ Lançar na fatura</button>
+        <div class="fatura-card-actions" style="flex-wrap:wrap;">
+          <div style="display:flex; gap:6px;">
+            <button class="btn-secondary" data-add-tx-account="${acc.id}">+ Lançar</button>
+            <button class="btn-secondary" data-import-invoice-acc="${acc.id}" title="Fazer upload de fatura CSV, PDF ou Foto para este cartão">↑ Importar Fatura</button>
+          </div>
           <button class="btn-primary" data-toggle-paid-invoice="${acc.id}" data-invoice-total="${spentCents}" style="padding:7px 14px; font-size:12px;">
             ${meta.status === 'paid' ? 'Reabrir Fatura' : 'Pagar Fatura (Debitar Conta)'}
           </button>
@@ -2164,7 +2719,10 @@ function renderFaturasView() {
         <h3 class="card-title" style="font-size:16px;">Faturas & Cartões — ${fmtMonthLabel(state.selectedMonth)}</h3>
         <p class="vs-prev">Compras após o dia de fechamento entram automaticamente na fatura do mês seguinte.</p>
       </div>
-      <button class="btn-primary" id="btn-new-invoice-card">+ Novo Cartão / Fatura</button>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button class="btn-secondary" id="btn-import-invoice-top">↑ Importar Fatura (CSV/PDF/Foto)</button>
+        <button class="btn-primary" id="btn-new-invoice-card">+ Novo Cartão / Fatura</button>
+      </div>
     </div>
 
     <div class="faturas-summary-grid">
@@ -2197,6 +2755,13 @@ function bindFaturasEvents() {
   document.querySelectorAll('[data-add-tx-account]').forEach(btn => {
     btn.addEventListener('click', () => openTransactionModal(btn.dataset.addTxAccount));
   });
+
+  document.querySelectorAll('[data-import-invoice-acc]').forEach(btn => {
+    btn.addEventListener('click', () => openImportInvoiceModal(btn.dataset.importInvoiceAcc));
+  });
+
+  const btnImpTop = document.getElementById('btn-import-invoice-top');
+  if (btnImpTop) btnImpTop.addEventListener('click', () => openImportInvoiceModal());
 
   document.querySelectorAll('[data-toggle-paid-invoice]').forEach(btn => {
     btn.addEventListener('click', () => {
