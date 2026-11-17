@@ -135,6 +135,12 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
             <option value="2027-12">dezembro de 2027 ▾</option>
           </select>
 
+          <!-- Botão Conta na Nuvem (Login / Cadastro PostgreSQL) -->
+          <button class="month-pill" id="btn-open-auth" title="Entrar ou criar conta na nuvem (Banco de Dados PostgreSQL)" style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-weight:600;">
+            <span id="auth-status-dot" style="width:7px; height:7px; border-radius:50%; background:var(--amber-gold); display:inline-block;"></span>
+            <span id="auth-btn-label">Entrar / Criar Conta</span>
+          </button>
+
           <!-- Botão Tema Claro / Escuro -->
           <button class="icon-circle-btn" id="theme-toggle-btn" title="Alternar tema claro/escuro" aria-label="Alternar tema">
             <svg id="theme-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -972,6 +978,92 @@ export const FAROL_SHELL_HTML = `<div class="app-shell">
           <div class="modal-footer-right">
             <button type="button" class="btn-secondary" id="dialog-cancel-btn">Cancelar</button>
             <button type="submit" class="btn-primary" id="dialog-confirm-btn">Confirmar</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL: CONTA NA NUVEM (LOGIN / CADASTRO POSTGRESQL) ==================== -->
+  <div class="modal-backdrop" id="modal-auth">
+    <div class="modal-card" style="max-width:460px;">
+      <div class="modal-header">
+        <div class="modal-header-main">
+          <div class="modal-icon-badge">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>
+            </svg>
+          </div>
+          <div class="modal-header-text">
+            <h3 class="modal-title" id="modal-auth-title">Conta na Nuvem</h3>
+            <p class="modal-subtitle">Salve suas contas bancárias, cartões e lançamentos no banco PostgreSQL</p>
+          </div>
+        </div>
+        <button type="button" class="modal-close-btn" data-close-modal="modal-auth" aria-label="Fechar">✕</button>
+      </div>
+      <form id="form-auth">
+        <div class="modal-body">
+          <input type="hidden" id="auth-mode" value="login" />
+
+          <div id="auth-logged-view" style="display:none;">
+            <div class="modal-live-summary" style="grid-template-columns:1fr; margin-bottom:14px;">
+              <div class="modal-live-cell">
+                <div class="modal-live-label">CONECTADO NA NUVEM (POSTGRESQL)</div>
+                <div class="modal-live-val" id="auth-logged-email">usuario@email.com</div>
+                <div style="font-size:11.5px; color:var(--green-emerald); margin-top:4px;">✓ Sincronização automática ativa em todos os dispositivos</div>
+              </div>
+            </div>
+          </div>
+
+          <div id="auth-form-fields">
+            <div class="form-group">
+              <label class="form-label">Acesso</label>
+              <div class="pro-seg-group" id="auth-seg-group">
+                <button type="button" class="pro-seg-btn active" data-auth-tab="login">
+                  <span class="seg-dot cyan"></span>Entrar
+                </button>
+                <button type="button" class="pro-seg-btn" data-auth-tab="register">
+                  <span class="seg-dot green"></span>Criar Conta
+                </button>
+              </div>
+            </div>
+
+            <div class="form-group" id="auth-name-group" style="display:none;">
+              <label class="form-label">Seu nome</label>
+              <div class="field-box">
+                <span class="field-prefix">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </span>
+                <input type="text" id="auth-name" class="form-input" placeholder="Ex: Arthur" />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">E-mail</label>
+              <div class="field-box">
+                <span class="field-prefix">@</span>
+                <input type="email" id="auth-email" class="form-input" placeholder="seu@email.com" required />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Senha</label>
+              <div class="field-box">
+                <span class="field-prefix">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </span>
+                <input type="password" id="auth-password" class="form-input" placeholder="Mínimo 4 caracteres" required />
+              </div>
+            </div>
+          </div>
+
+          <div id="auth-feedback" style="display:none; font-size:12.5px; padding:10px 12px; border-radius:10px; margin-top:6px;"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-modal-delete" id="btn-auth-logout" style="display:none;">Sair da conta</button>
+          <div class="modal-footer-right">
+            <button type="button" class="btn-secondary" data-close-modal="modal-auth">Fechar</button>
+            <button type="submit" class="btn-primary" id="btn-auth-submit">Entrar na conta</button>
           </div>
         </div>
       </form>

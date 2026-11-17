@@ -7,8 +7,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model UserAccount {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 model UserWorkspace {
   id                 String        @id
+  email              String?
   name               String
   plan               String        @default("Plano pessoal")
   monthlySalaryCents Int           @default(0)
@@ -21,7 +31,24 @@ model UserWorkspace {
   stateJson          String        @db.Text
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
+  bankAccounts       BankAccount[]
   transactions       Transaction[]
+}
+
+model BankAccount {
+  id                  String        @id
+  accountKey          String
+  userId              String
+  user                UserWorkspace @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                String
+  type                String
+  initialBalanceCents Int           @default(0)
+  limitCents          Int           @default(200000)
+  closingDay          Int           @default(5)
+  dueDay              Int           @default(12)
+  updatedAt           DateTime      @updatedAt
+
+  @@index([userId])
 }
 
 model Transaction {
