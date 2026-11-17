@@ -117,6 +117,7 @@ function getDefaultState(userName = 'Meu nome') {
     privacyMode: false,
     theme: 'light',
     designV3Applied: true,
+    designV4LightDefault: true,
     lastUsedAccountId: 'acc-nubank',
     profile: {
       name: userName,
@@ -276,6 +277,9 @@ function migrateLegacyV1(v1) {
   const def = getDefaultState(v1?.profile?.name || 'Meu nome');
   return {
     ...def,
+    theme: 'light',
+    designV3Applied: true,
+    designV4LightDefault: true,
     selectedMonth: v1.selectedMonth || def.selectedMonth,
     currentTab: v1.currentTab || def.currentTab,
     accumulatedSubTab: v1.accumulatedSubTab || def.accumulatedSubTab,
@@ -381,9 +385,13 @@ function getImportableLocalDefaultState() {
 
 function upgradeLegacyThemeOnce(st) {
   if (!st || typeof st !== 'object') return st;
-  if (!st.designV3Applied) {
+  if (!st.designV4LightDefault) {
     st.theme = 'light';
     st.designV3Applied = true;
+    st.designV4LightDefault = true;
+  }
+  if (st.theme !== 'dark' && st.theme !== 'light') {
+    st.theme = 'light';
   }
   return st;
 }
@@ -406,7 +414,7 @@ function loadStateForUser(userId = usersIndex.activeUserId, fallbackName = null)
     try {
       const legacyRaw = window.localStorage.getItem(LEGACY_V1_KEY);
       if (legacyRaw && legacyRaw !== 'undefined') {
-        const migrated = mergeDefaultCategories(migrateLegacyV1(JSON.parse(legacyRaw)));
+        const migrated = upgradeLegacyThemeOnce(mergeDefaultCategories(migrateLegacyV1(JSON.parse(legacyRaw))));
         window.localStorage.setItem(getUserStorageKey(targetId), JSON.stringify(migrated));
         return migrated;
       }
@@ -2322,7 +2330,7 @@ function openImportInvoiceModal(preselectedAccountId = null) {
   setImportStatusBanner('');
   renderInvoiceReviewTable();
   bindImportInvoiceModalEvents();
-  modal.classList.add('open');
+  openFarolModal(modal);
 }
 
 function bindImportInvoiceModalEvents() {
@@ -2694,7 +2702,7 @@ function bindImportInvoiceModalEvents() {
         state.selectedMonth = selectedRows[0].date.slice(0, 7);
       }
       saveState();
-      document.getElementById('modal-import-invoice')?.classList.remove('open');
+      closeFarolModal('modal-import-invoice');
       renderApp();
       showUndoToast(
         `Fatura importada: ${addedCurrent} compra(s)` +
@@ -3378,13 +3386,33 @@ function bindFaturasEvents() {
 }
 
 function updateInvoiceLiveSummary() {
-  const cDay = parseInt(document.getElementById('inv-closing-day')?.value, 10) || 5;
-  const dDay = parseInt(document.getElementById('inv-due-day')?.value, 10) || 12;
+  const cDay = Math.min(31, Math.max(1, parseInt(document.getElementById('inv-closing-day')?.value, 10) || 5));
+  const dDay = Math.min(31, Math.max(1, parseInt(document.getElementById('inv-due-day')?.value, 10) || 12));
   const limCents = toCents(document.getElementById('inv-limit')?.value);
+  const nameVal = document.getElementById('inv-name')?.value?.trim() || 'Cartão de crédito';
+  const statusVal = document.getElementById('inv-status')?.value || 'open';
+  const statusMap = {
+    open: { label: 'Aberta', cls: '' },
+    closed: { label: 'Fechada', cls: 'is-amber' },
+    paid: { label: 'Paga', cls: 'is-success' }
+  };
   const cycleEl = document.getElementById('inv-live-cycle');
   const limEl = document.getElementById('inv-live-limit');
+  const railNameEl = document.getElementById('inv-rail-name');
+  const railStatusEl = document.getElementById('inv-rail-status');
+  const closingHintEl = document.getElementById('inv-closing-hint');
+  const dueHintEl = document.getElementById('inv-due-hint');
+
   if (cycleEl) cycleEl.textContent = `Fecha dia ${cDay} · Vence dia ${dDay}`;
   if (limEl) limEl.textContent = fmtBRL(limCents);
+  if (railNameEl) railNameEl.textContent = nameVal;
+  if (railStatusEl) {
+    const stInfo = statusMap[statusVal] || statusMap.open;
+    railStatusEl.textContent = stInfo.label;
+    railStatusEl.className = `modal-rail-badge ${stInfo.cls}`.trim();
+  }
+  if (closingHintEl) closingHintEl.textContent = `Todo mês, no dia ${cDay}.`;
+  if (dueHintEl) dueHintEl.textContent = `Todo mês, no dia ${dDay}.`;
 }
 
 function openInvoiceModal(accountId) {
@@ -3411,7 +3439,7 @@ function openInvoiceModal(accountId) {
   const delBtn = document.getElementById('btn-delete-invoice');
   delBtn.style.display = (!isNew && state.accounts.length > 1) ? 'inline-flex' : 'none';
 
-  document.getElementById('modal-invoice').classList.add('open');
+  openFarolModal('modal-invoice');
 }
 
 // ============================================================
@@ -3489,7 +3517,8 @@ function openCategoryModal(catId) {
   archBtn.style.display = !isNew ? 'inline-flex' : 'none';
   archBtn.textContent = cat.archived ? 'Reativar Categoria' : 'Arquivar Categoria';
 
-  document.getElementById('modal-category').classList.add('open');
+  updateCategoryModalPreview();
+  openFarolModal('modal-category');
 }
 
 function bindCategoriasEvents() {
@@ -3519,7 +3548,8 @@ function openGoalModal(goalId = null) {
   if (deleteBtn) deleteBtn.style.display = goal ? 'inline-flex' : 'none';
   const submitBtn = document.getElementById('btn-goal-submit');
   if (submitBtn) submitBtn.textContent = goal ? 'Salvar alterações' : 'Criar meta';
-  modal.classList.add('open');
+  updateGoalModalPreview();
+  openFarolModal(modal);
 }
 
 function renderMetasView() {
@@ -3823,8 +3853,17 @@ function updateAssetLiveSummary() {
   const netMonthlyCents = Math.round(monthlyCents * netFactor);
   const mEl = document.getElementById('ast-live-monthly');
   const aEl = document.getElementById('ast-live-annual');
-  if (mEl) mEl.textContent = `+${fmtBRL(netMonthlyCents)}/mês (líq.)`;
+  if (mEl) mEl.textContent = `+${fmtBRL(netMonthlyCents)}/mês`;
   if (aEl) aEl.textContent = `+${fmtBRL(netMonthlyCents * 12)}/ano`;
+
+  const nameEl = document.getElementById('ast-rail-name');
+  const clsEl = document.getElementById('ast-rail-class');
+  const balEl = document.getElementById('ast-rail-balance');
+  const rateEl = document.getElementById('ast-rail-rate');
+  if (nameEl) nameEl.textContent = document.getElementById('ast-name')?.value?.trim() || 'Novo ativo';
+  if (clsEl) clsEl.textContent = document.getElementById('ast-category')?.value || 'Renda Fixa (CDB)';
+  if (balEl) balEl.textContent = fmtBRL(amtCents);
+  if (rateEl) rateEl.textContent = `${effBase}% CDI · ${document.getElementById('ast-liquidity')?.value || 'Diária'}`;
 }
 
 function openAssetModal(assetId) {
@@ -3851,7 +3890,7 @@ function openAssetModal(assetId) {
   const delBtn = document.getElementById('btn-delete-asset');
   delBtn.style.display = !isNew ? 'inline-flex' : 'none';
 
-  document.getElementById('modal-asset').classList.add('open');
+  openFarolModal('modal-asset');
 }
 
 function bindPatrimonioEvents() {
@@ -4386,6 +4425,300 @@ function bindContasEvents() {
 }
 
 // ============================================================
+// MODAIS NATIVOS (<dialog> TOP LAYER + LIVE RAIL PREVIEWS)
+// ============================================================
+let farolSupportsDisplayTransition;
+function canTransitionDisplay() {
+  if (farolSupportsDisplayTransition !== undefined) return farolSupportsDisplayTransition;
+  if (typeof window === 'undefined' || !window.CSS?.supports?.('transition-behavior', 'allow-discrete') || !document.body) {
+    return false;
+  }
+  const probe = document.createElement('div');
+  probe.style.cssText = 'transition: display 1s allow-discrete !important; display: block;';
+  document.body.appendChild(probe);
+  getComputedStyle(probe).display;
+  probe.style.display = 'none';
+  farolSupportsDisplayTransition = getComputedStyle(probe).display === 'block';
+  probe.remove();
+  return farolSupportsDisplayTransition;
+}
+
+function supportsTopLayerExit() {
+  return typeof window !== 'undefined' && Boolean(window.CSS?.supports?.('overlay', 'auto')) && canTransitionDisplay();
+}
+
+async function closeTopLayerModal(dialogEl, immediate = false) {
+  if (!dialogEl) return;
+  if (typeof dialogEl.close !== 'function') {
+    dialogEl.classList?.remove('open');
+    return;
+  }
+  if (!dialogEl.open) {
+    dialogEl.classList?.remove('open');
+    return;
+  }
+  if (immediate || supportsTopLayerExit()) {
+    dialogEl.removeAttribute?.('data-closing');
+    dialogEl.classList?.remove('open');
+    dialogEl.close();
+    return;
+  }
+  if (dialogEl.hasAttribute?.('data-closing')) return;
+  dialogEl.setAttribute('data-closing', '');
+  const animations = typeof dialogEl.getAnimations === 'function'
+    ? dialogEl.getAnimations({ subtree: true })
+    : [];
+  if (animations.length > 0) {
+    await Promise.race([
+      Promise.allSettled(animations.map(a => a.finished)),
+      new Promise(r => setTimeout(r, 320))
+    ]);
+  }
+  if (!dialogEl.hasAttribute('data-closing')) return;
+  dialogEl.removeAttribute('data-closing');
+  dialogEl.classList?.remove('open');
+  if (dialogEl.open) dialogEl.close();
+}
+
+function openFarolModal(modalOrId) {
+  const modal = typeof modalOrId === 'string' ? document.getElementById(modalOrId) : modalOrId;
+  if (!modal) return;
+  modal.removeAttribute?.('data-closing');
+  if (typeof modal.showModal === 'function') {
+    if (!modal.open) {
+      try {
+        modal.showModal();
+      } catch {
+        modal.setAttribute?.('open', '');
+      }
+    }
+  } else {
+    modal.classList?.add('open');
+  }
+}
+
+function closeFarolModal(modalOrId, immediate = false) {
+  const modal = typeof modalOrId === 'string' ? document.getElementById(modalOrId) : modalOrId;
+  if (!modal) return;
+  closeTopLayerModal(modal, immediate);
+}
+
+let farolDialogsBound = false;
+function setupFarolDialogs() {
+  if (farolDialogsBound || typeof document === 'undefined') return;
+  farolDialogsBound = true;
+  const needsClosedByFallback = typeof HTMLDialogElement === 'function'
+    && !('closedBy' in HTMLDialogElement.prototype);
+
+  document.querySelectorAll('dialog.modal-dialog').forEach(dialog => {
+    dialog.addEventListener('cancel', (e) => {
+      e.preventDefault();
+      closeTopLayerModal(dialog, false);
+    });
+    dialog.addEventListener('close', () => {
+      dialog.returnValue = '';
+      dialog.removeAttribute?.('data-closing');
+      dialog.classList?.remove('open');
+    });
+    if (needsClosedByFallback && dialog.getAttribute('closedby') === 'any') {
+      const outside = (e) => {
+        const r = dialog.getBoundingClientRect();
+        return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+      };
+      let pressedOutside = false;
+      dialog.addEventListener('pointerdown', (e) => {
+        pressedOutside = outside(e);
+      });
+      dialog.addEventListener('pointerup', (e) => {
+        if (pressedOutside && outside(e)) closeTopLayerModal(dialog, false);
+        pressedOutside = false;
+      });
+    }
+  });
+}
+
+function getProfileInitials(name) {
+  const parts = String(name || 'MN').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return 'MN';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function updateProfileModalPreview() {
+  const nameVal = document.getElementById('prof-name')?.value?.trim() || 'Meu nome';
+  const planVal = document.getElementById('prof-plan')?.value?.trim() || 'Plano pessoal';
+  const salaryCents = toCents(document.getElementById('prof-salary')?.value);
+  const salDay = Math.min(31, Math.max(1, parseInt(document.getElementById('prof-salary-day')?.value, 10) || 5));
+  const budgetCents = toCents(document.getElementById('prof-budget')?.value);
+  const reserveCents = toCents(document.getElementById('prof-reserve-goal')?.value);
+
+  const avatarEl = document.getElementById('prof-rail-avatar');
+  const nameEl = document.getElementById('prof-rail-name');
+  const planEl = document.getElementById('prof-rail-plan');
+  const salaryHint = document.getElementById('prof-salary-hint');
+  const dayHint = document.getElementById('prof-day-hint');
+  const budgetHint = document.getElementById('prof-budget-hint');
+  const reserveHint = document.getElementById('prof-reserve-hint');
+
+  if (avatarEl) avatarEl.textContent = getProfileInitials(nameVal);
+  if (nameEl) nameEl.textContent = nameVal;
+  if (planEl) planEl.textContent = planVal;
+  if (salaryHint) {
+    salaryHint.textContent = salaryCents > 0
+      ? `Entrada fixa de ${fmtBRL(salaryCents)} por mês.`
+      : 'Deixe zero se sua renda varia.';
+  }
+  if (dayHint) dayHint.textContent = `Todo mês, no dia ${salDay}.`;
+  if (budgetHint) {
+    budgetHint.textContent = budgetCents > 0
+      ? `Cerca de ${fmtBRL(Math.round(budgetCents / 30))} por dia.`
+      : 'Sem teto mensal definido.';
+  }
+  if (reserveHint) {
+    reserveHint.textContent = reserveCents > 0 && salaryCents > 0
+      ? `Equivale a ${(reserveCents / salaryCents).toFixed(1).replace('.', ',')} meses de renda.`
+      : 'Valor-alvo da sua reserva.';
+  }
+}
+
+function updateTransactionModalPreview() {
+  const typeVal = document.getElementById('tx-type')?.value || 'expense';
+  const amtCents = toCents(document.getElementById('tx-amount')?.value);
+  const catId = document.getElementById('tx-category')?.value;
+  const catObj = catId ? getCategoryById(catId) : null;
+  const accSel = document.getElementById('tx-account');
+  const accText = accSel?.options?.[accSel.selectedIndex]?.textContent || 'Conta Principal';
+  const method = document.getElementById('tx-method')?.value || 'Conta Corrente / Pix';
+  const count = parseInt(document.getElementById('tx-installments')?.value, 10) || 1;
+  const isCard = typeVal === 'expense' && method === 'Cartão de Crédito';
+
+  const typePill = document.getElementById('tx-rail-type-pill');
+  const amtEl = document.getElementById('tx-rail-amount');
+  const catEl = document.getElementById('tx-rail-cat');
+  const accEl = document.getElementById('tx-rail-acc');
+  const parcelEl = document.getElementById('tx-rail-parcel');
+  const hintEl = document.getElementById('tx-amount-hint');
+
+  if (typePill) {
+    typePill.textContent = typeVal === 'income' ? 'Entrada' : 'Saída';
+    typePill.className = `modal-rail-badge ${typeVal === 'income' ? 'is-success' : 'is-danger'}`;
+  }
+  if (amtEl) amtEl.textContent = fmtBRL(amtCents);
+  if (catEl) catEl.textContent = catObj?.name || 'Geral';
+  if (accEl) accEl.textContent = accText;
+  if (parcelEl) {
+    if (isCard && count > 1 && amtCents > 0) {
+      parcelEl.textContent = `${count}x de ${fmtBRL(Math.round(amtCents / count))}`;
+    } else if (isCard) {
+      parcelEl.textContent = 'Crédito à vista';
+    } else {
+      parcelEl.textContent = method === 'Conta Corrente / Pix' ? 'Pix / Débito' : 'À vista';
+    }
+  }
+  if (hintEl) {
+    hintEl.textContent = isCard && count > 1 && amtCents > 0
+      ? `Cada parcela ficará em ${fmtBRL(Math.round(amtCents / count))} na fatura.`
+      : 'Informe o valor total da operação.';
+  }
+}
+
+function updateCategoryModalPreview() {
+  const name = document.getElementById('cat-name')?.value?.trim() || 'Nova categoria';
+  const color = document.getElementById('cat-color')?.value || '#38b6ff';
+  const budgetCents = toCents(document.getElementById('cat-budget')?.value);
+  const rulesCount = (document.getElementById('cat-rules')?.value || '')
+    .split(',').map(s => s.trim()).filter(Boolean).length;
+
+  const dotEl = document.getElementById('cat-rail-dot');
+  const nameEl = document.getElementById('cat-rail-name');
+  const budgetEl = document.getElementById('cat-rail-budget');
+  const rulesEl = document.getElementById('cat-rail-rules');
+  const hintEl = document.getElementById('cat-budget-hint');
+  const hexEl = document.getElementById('cat-color-hex');
+
+  if (dotEl) dotEl.style.background = color;
+  if (nameEl) nameEl.textContent = name;
+  if (budgetEl) budgetEl.textContent = fmtBRL(budgetCents);
+  if (rulesEl) rulesEl.textContent = `${rulesCount} ${rulesCount === 1 ? 'termo' : 'termos'}`;
+  if (hintEl) {
+    hintEl.textContent = budgetCents > 0
+      ? `Cerca de ${fmtBRL(Math.round(budgetCents / 30))} por dia.`
+      : 'Sem teto mensal definido para esta categoria.';
+  }
+  if (hexEl) hexEl.textContent = color.toUpperCase();
+}
+
+function updateAccountModalPreview() {
+  const name = document.getElementById('acc-name')?.value?.trim() || 'Nova instituição';
+  const type = document.getElementById('acc-type')?.value || 'Conta + Cartão';
+  const balCents = toCents(document.getElementById('acc-balance')?.value);
+  const limCents = toCents(document.getElementById('acc-limit')?.value);
+  const cDay = Math.min(31, Math.max(1, parseInt(document.getElementById('acc-closing-day')?.value, 10) || 5));
+  const dDay = Math.min(31, Math.max(1, parseInt(document.getElementById('acc-due-day')?.value, 10) || 12));
+  const showCycle = type === 'Cartão de Crédito' || type === 'Conta + Cartão';
+
+  const nameEl = document.getElementById('acc-rail-name');
+  const typeEl = document.getElementById('acc-rail-type');
+  const balEl = document.getElementById('acc-rail-balance');
+  const limEl = document.getElementById('acc-rail-limit');
+  const cycleRow = document.getElementById('acc-rail-cycle-row');
+  const cycleEl = document.getElementById('acc-rail-cycle');
+  const cardSec = document.getElementById('acc-card-dates-section');
+  const closingHint = document.getElementById('acc-closing-hint');
+  const dueHint = document.getElementById('acc-due-hint');
+
+  if (nameEl) nameEl.textContent = name;
+  if (typeEl) typeEl.textContent = type;
+  if (balEl) balEl.textContent = fmtBRL(balCents);
+  if (limEl) limEl.textContent = fmtBRL(limCents);
+  if (cycleRow) cycleRow.style.display = showCycle ? 'flex' : 'none';
+  if (cycleEl) cycleEl.textContent = `Fecha ${cDay} · Vence ${dDay}`;
+  if (cardSec) cardSec.style.display = showCycle ? 'block' : 'none';
+  if (closingHint) closingHint.textContent = `Todo mês, no dia ${cDay}.`;
+  if (dueHint) dueHint.textContent = `Todo mês, no dia ${dDay}.`;
+}
+
+function updateGoalModalPreview() {
+  const title = document.getElementById('goal-title')?.value?.trim() || 'Nova meta';
+  const color = document.getElementById('goal-color')?.value || '#0d6efd';
+  const curCents = Math.max(0, toCents(document.getElementById('goal-current')?.value));
+  const targetCents = Math.max(0, toCents(document.getElementById('goal-target')?.value));
+  const deadline = document.getElementById('goal-deadline')?.value || '';
+  const pct = targetCents > 0 ? Math.min(100, Math.round((curCents / targetCents) * 100)) : 0;
+  const remCents = Math.max(0, targetCents - curCents);
+
+  const ringEl = document.getElementById('goal-rail-ring');
+  const pctEl = document.getElementById('goal-rail-pct');
+  const nameEl = document.getElementById('goal-rail-name');
+  const progEl = document.getElementById('goal-rail-progress');
+  const remEl = document.getElementById('goal-rail-remaining');
+  const dlEl = document.getElementById('goal-rail-deadline');
+  const hintEl = document.getElementById('goal-target-hint');
+  const hexEl = document.getElementById('goal-color-hex');
+
+  if (ringEl && ringEl.style) {
+    ringEl.style.setProperty?.('--goal-pct', `${pct}%`);
+    ringEl.style.setProperty?.('--goal-accent', color);
+  }
+  if (pctEl) pctEl.textContent = `${pct}%`;
+  if (nameEl) nameEl.textContent = title;
+  if (progEl) progEl.textContent = fmtBRL(curCents);
+  if (remEl) remEl.textContent = remCents === 0 && targetCents > 0 ? 'Meta atingida!' : fmtBRL(remCents);
+  if (dlEl) dlEl.textContent = deadline ? deadline.split('-').reverse().join('/') : 'Sem prazo';
+  if (hexEl) hexEl.textContent = color.toUpperCase();
+  if (hintEl) {
+    if (remCents > 0 && deadline && /^\d{4}-\d{2}$/.test(deadline)) {
+      const [y, m] = deadline.split('-').map(Number);
+      const now = new Date();
+      const months = Math.max(1, (y - now.getFullYear()) * 12 + (m - (now.getMonth() + 1)));
+      hintEl.textContent = `Falta poupar cerca de ${fmtBRL(Math.ceil(remCents / months))}/mês.`;
+    } else {
+      hintEl.textContent = 'Quanto deseja acumular no total.';
+    }
+  }
+}
+
+// ============================================================
 // MODAIS: LANÇAMENTO RÁPIDO (3 TOQUES) & PERFIL ISOLADO
 // ============================================================
 let manualCategoryPicked = false;
@@ -4400,7 +4733,7 @@ function renderQuickCategoryChips(selectedId) {
 
   chipsWrap.innerHTML = sortedCats.map(c => `
     <button type="button" class="cat-chip ${c.id === activeId ? 'selected' : ''}" data-quick-cat="${c.id}">
-      <span class="cat-dot" style="background:${c.color};"></span>
+      <span class="cat-dot" style="background:${c.color};" aria-hidden="true"></span>
       ${c.name}
     </button>
   `).join('');
@@ -4411,6 +4744,7 @@ function renderQuickCategoryChips(selectedId) {
       renderQuickCategoryChips(chip.dataset.quickCat);
     });
   });
+  updateTransactionModalPreview();
 }
 
 function syncSegmentedControl(selectId) {
@@ -4418,7 +4752,9 @@ function syncSegmentedControl(selectId) {
   const group = document.querySelector(`[data-seg-for="${selectId}"]`);
   if (!sel || !group) return;
   group.querySelectorAll('[data-seg-val]').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.segVal === sel.value);
+    const isActive = btn.dataset.segVal === sel.value;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
   });
 }
 
@@ -4477,7 +4813,8 @@ function openTransactionModal(preselectedAccountId = null, editTxId = null) {
 
   syncSegmentedControl('tx-type');
   updateInstallmentUI();
-  document.getElementById('modal-transaction').classList.add('open');
+  updateTransactionModalPreview();
+  openFarolModal('modal-transaction');
   setTimeout(() => document.getElementById('tx-amount').focus(), 60);
 }
 
@@ -4494,6 +4831,7 @@ function updateInstallmentUI() {
     const count = parseInt(document.getElementById('tx-installments').value, 10) || 1;
     preview.textContent = count > 1 && totalCents > 0 ? `${count}x de ${fmtBRL(Math.round(totalCents / count))}` : 'À vista';
   }
+  updateTransactionModalPreview();
 }
 
 function openProfileModal() {
@@ -4513,7 +4851,8 @@ function openProfileModal() {
     const canImportLocal = usersIndex.activeUserId !== 'user-default' && Boolean(getImportableLocalDefaultState());
     importWrap.style.display = canImportLocal ? 'flex' : 'none';
   }
-  document.getElementById('modal-profile').classList.add('open');
+  updateProfileModalPreview();
+  openFarolModal('modal-profile');
 }
 
 let farolInitialized = false;
@@ -4570,15 +4909,11 @@ export function initFarolApp() {
   document.getElementById('quick-add-btn').addEventListener('click', () => openTransactionModal());
   document.getElementById('profile-trigger').addEventListener('click', () => openProfileModal());
 
+  setupFarolDialogs();
+
   document.querySelectorAll('[data-close-modal]').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.getElementById(btn.dataset.closeModal).classList.remove('open');
-    });
-  });
-
-  document.querySelectorAll('.modal-backdrop').forEach(backdrop => {
-    backdrop.addEventListener('click', (e) => {
-      if (e.target === backdrop) backdrop.classList.remove('open');
+      closeFarolModal(btn.dataset.closeModal);
     });
   });
 
@@ -4597,20 +4932,76 @@ export function initFarolApp() {
     });
   });
 
-  // Live summary listeners nos modais
-  ['inv-limit', 'inv-closing-day', 'inv-due-day'].forEach(id => {
+  // Live summary listeners nos modais (prévia em tempo real estilo Split-Rail)
+  ['inv-name', 'inv-status', 'inv-limit', 'inv-closing-day', 'inv-due-day'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.addEventListener('input', updateInvoiceLiveSummary);
+    if (el) {
+      el.addEventListener('input', updateInvoiceLiveSummary);
+      el.addEventListener('change', updateInvoiceLiveSummary);
+    }
   });
 
-  ['ast-amount', 'ast-cdb-pct', 'ast-promo-cap', 'ast-excess-pct'].forEach(id => {
+  ['ast-name', 'ast-category', 'ast-amount', 'ast-cdb-pct', 'ast-liquidity', 'ast-promo-cap', 'ast-excess-pct'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.addEventListener('input', updateAssetLiveSummary);
+    if (el) {
+      el.addEventListener('input', updateAssetLiveSummary);
+      el.addEventListener('change', updateAssetLiveSummary);
+    }
   });
 
-  ['rec-amount', 'rec-day'].forEach(id => {
+  ['rec-desc', 'rec-amount', 'rec-day', 'rec-type'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.addEventListener('input', updateRecurrenceLiveSummary);
+    if (el) {
+      el.addEventListener('input', updateRecurrenceLiveSummary);
+      el.addEventListener('change', updateRecurrenceLiveSummary);
+    }
+  });
+
+  ['prof-name', 'prof-plan', 'prof-salary', 'prof-salary-day', 'prof-budget', 'prof-reserve-goal'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', updateProfileModalPreview);
+  });
+
+  const profNewUserInput = document.getElementById('prof-new-user');
+  if (profNewUserInput) {
+    profNewUserInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.isComposing) {
+        e.preventDefault();
+        document.getElementById('btn-create-user')?.click();
+      }
+    });
+  }
+
+  ['tx-account', 'tx-method', 'tx-installments', 'tx-type', 'tx-amount'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('input', updateTransactionModalPreview);
+      el.addEventListener('change', updateTransactionModalPreview);
+    }
+  });
+
+  ['cat-name', 'cat-color', 'cat-budget', 'cat-rules'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('input', updateCategoryModalPreview);
+      el.addEventListener('change', updateCategoryModalPreview);
+    }
+  });
+
+  ['acc-name', 'acc-type', 'acc-balance', 'acc-limit', 'acc-closing-day', 'acc-due-day'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('input', updateAccountModalPreview);
+      el.addEventListener('change', updateAccountModalPreview);
+    }
+  });
+
+  ['goal-title', 'goal-color', 'goal-current', 'goal-target', 'goal-deadline'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('input', updateGoalModalPreview);
+      el.addEventListener('change', updateGoalModalPreview);
+    }
   });
 
   const delTxBtn = document.getElementById('btn-delete-transaction');
@@ -4620,7 +5011,7 @@ export function initFarolApp() {
       if (!txId) return;
       state.transactions = state.transactions.filter(t => t.id !== txId);
       saveState();
-      document.getElementById('modal-transaction').classList.remove('open');
+      closeFarolModal('modal-transaction');
       renderApp();
     });
   }
@@ -4633,7 +5024,7 @@ export function initFarolApp() {
       state.recurrences = state.recurrences.filter(r => r.id !== recId);
       state.transactions = state.transactions.filter(t => !(t.recurrenceId === recId && (t.date || '').startsWith(state.selectedMonth)));
       saveState();
-      document.getElementById('modal-recurrence').classList.remove('open');
+      closeFarolModal('modal-recurrence');
       renderApp();
     });
   }
@@ -4660,7 +5051,7 @@ export function initFarolApp() {
     usersIndex.activeUserId = e.target.value;
     saveUsersIndex(usersIndex);
     state = loadState();
-    document.getElementById('modal-profile').classList.remove('open');
+    closeFarolModal('modal-profile');
     renderApp();
   });
 
@@ -4673,7 +5064,7 @@ export function initFarolApp() {
     saveUsersIndex(usersIndex);
     state = getCleanEmptyState(newName);
     saveState();
-    document.getElementById('modal-profile').classList.remove('open');
+    closeFarolModal('modal-profile');
     renderApp();
   });
 
@@ -4695,7 +5086,7 @@ export function initFarolApp() {
         state.profile.name = cloudSessionUser.name;
       }
       saveState();
-      document.getElementById('modal-profile').classList.remove('open');
+      closeFarolModal('modal-profile');
       renderApp();
       showUndoToast('Dados locais anteriores importados e salvos na sua conta!');
     });
@@ -4735,7 +5126,7 @@ export function initFarolApp() {
     }
 
     saveState();
-    document.getElementById('modal-category').classList.remove('open');
+    closeFarolModal('modal-category');
     renderApp();
   });
 
@@ -4745,7 +5136,7 @@ export function initFarolApp() {
     if (!cat) return;
     cat.archived = !cat.archived;
     saveState();
-    document.getElementById('modal-category').classList.remove('open');
+    closeFarolModal('modal-category');
     renderApp();
   });
 
@@ -4786,7 +5177,7 @@ export function initFarolApp() {
 
     setInvoiceMeta(targetId, { status, adjustmentCents });
     saveState();
-    document.getElementById('modal-invoice').classList.remove('open');
+    closeFarolModal('modal-invoice');
     renderApp();
   });
 
@@ -4795,7 +5186,7 @@ export function initFarolApp() {
     if (!accId || state.accounts.length <= 1) return;
     state.accounts = state.accounts.filter(a => a.id !== accId);
     saveState();
-    document.getElementById('modal-invoice').classList.remove('open');
+    closeFarolModal('modal-invoice');
     renderApp();
   });
 
@@ -4844,7 +5235,7 @@ export function initFarolApp() {
     }
 
     saveState();
-    document.getElementById('modal-asset').classList.remove('open');
+    closeFarolModal('modal-asset');
     renderApp();
   });
 
@@ -4853,7 +5244,7 @@ export function initFarolApp() {
     if (!id) return;
     state.assets = state.assets.filter(a => a.id !== id);
     saveState();
-    document.getElementById('modal-asset').classList.remove('open');
+    closeFarolModal('modal-asset');
     renderApp();
   });
 
@@ -4954,7 +5345,7 @@ export function initFarolApp() {
     }
 
     saveState();
-    document.getElementById('modal-transaction').classList.remove('open');
+    closeFarolModal('modal-transaction');
     renderApp();
   });
 
@@ -4976,14 +5367,14 @@ export function initFarolApp() {
     }
 
     saveState();
-    document.getElementById('modal-profile').classList.remove('open');
+    closeFarolModal('modal-profile');
     renderApp();
   });
 
   document.getElementById('btn-reset-demo').addEventListener('click', () => {
     state = { ...getDefaultState(state.profile.name), isExplicitDemo: true };
     saveState();
-    document.getElementById('modal-profile').classList.remove('open');
+    closeFarolModal('modal-profile');
     renderApp();
   });
 
@@ -5042,7 +5433,7 @@ export function initFarolApp() {
         });
       }
       saveState();
-      document.getElementById('modal-recurrence').classList.remove('open');
+      closeFarolModal('modal-recurrence');
       renderApp();
     });
   }
@@ -5052,7 +5443,7 @@ export function initFarolApp() {
   const accCardRow = document.getElementById('acc-card-dates-row');
   if (accTypeSelect && accCardRow) {
     accTypeSelect.addEventListener('change', () => {
-      accCardRow.style.display = (accTypeSelect.value === 'Cartão de Crédito' || accTypeSelect.value === 'Conta + Cartão') ? 'grid' : 'none';
+      updateAccountModalPreview();
     });
   }
 
@@ -5091,7 +5482,7 @@ export function initFarolApp() {
         });
       }
       saveState();
-      document.getElementById('modal-account').classList.remove('open');
+      closeFarolModal('modal-account');
       renderApp();
     });
   }
@@ -5101,7 +5492,7 @@ export function initFarolApp() {
     delAccBtn.addEventListener('click', () => {
       const accId = document.getElementById('acc-id').value;
       if (!accId || state.accounts.length <= 1) return;
-      document.getElementById('modal-account').classList.remove('open');
+      closeFarolModal('modal-account', true);
       openDialogModal({
         title: 'Excluir conta ou cartão',
         message: 'Tem certeza que deseja excluir esta conta? Os lançamentos existentes permanecerão no histórico.',
@@ -5148,7 +5539,7 @@ export function initFarolApp() {
       }
 
       saveState();
-      document.getElementById('modal-goal').classList.remove('open');
+      closeFarolModal('modal-goal');
       renderApp();
       showUndoToast(goalId ? 'Meta atualizada com sucesso!' : 'Nova meta criada!');
     });
@@ -5159,7 +5550,7 @@ export function initFarolApp() {
     delGoalBtn.addEventListener('click', () => {
       const goalId = document.getElementById('goal-id').value;
       if (!goalId) return;
-      document.getElementById('modal-goal').classList.remove('open');
+      closeFarolModal('modal-goal', true);
       openDialogModal({
         title: 'Excluir meta',
         message: 'Tem certeza que deseja excluir esta meta estratégica?',
@@ -5183,6 +5574,8 @@ export function initFarolApp() {
 // MODAIS AUXILIARES: RECORRÊNCIA, CONTA & DIÁLOGO ESTILIZADO
 // ============================================================
 function updateRecurrenceLiveSummary() {
+  const desc = document.getElementById('rec-desc')?.value?.trim() || 'Nova assinatura';
+  const typeVal = document.getElementById('rec-type')?.value || 'expense';
   const valCents = toCents(document.getElementById('rec-amount')?.value);
   const day = Math.min(31, Math.max(1, parseInt(document.getElementById('rec-day')?.value, 10) || 10));
   const [yStr, mStr] = (state.selectedMonth || '2026-12').split('-');
@@ -5190,8 +5583,20 @@ function updateRecurrenceLiveSummary() {
   const mLabel = shortMonths[(parseInt(mStr, 10) || 12) - 1] || 'dez';
   const nextEl = document.getElementById('rec-live-next');
   const annEl = document.getElementById('rec-live-annual');
+  const railTypeEl = document.getElementById('rec-rail-type');
+  const railNameEl = document.getElementById('rec-rail-name');
+  const railAmtEl = document.getElementById('rec-rail-amount');
+  const dayHintEl = document.getElementById('rec-day-hint');
+
   if (nextEl) nextEl.textContent = `${String(day).padStart(2, '0')} de ${mLabel} de ${yStr}`;
   if (annEl) annEl.textContent = fmtBRL(valCents * 12);
+  if (railNameEl) railNameEl.textContent = desc;
+  if (railAmtEl) railAmtEl.textContent = fmtBRL(valCents);
+  if (railTypeEl) {
+    railTypeEl.textContent = typeVal === 'income' ? 'Entrada fixa' : 'Saída fixa';
+    railTypeEl.className = `modal-rail-badge ${typeVal === 'income' ? 'is-success' : 'is-danger'}`;
+  }
+  if (dayHintEl) dayHintEl.textContent = `Todo mês, no dia ${day}.`;
 }
 
 function openRecurrenceModal(recId = null) {
@@ -5221,13 +5626,13 @@ function openRecurrenceModal(recId = null) {
   const delBtn = document.getElementById('btn-delete-recurrence');
   if (delBtn) delBtn.style.display = rec ? 'inline-flex' : 'none';
   updateRecurrenceLiveSummary();
-  document.getElementById('modal-recurrence').classList.add('open');
+  openFarolModal('modal-recurrence');
   setTimeout(() => document.getElementById('rec-desc').focus(), 40);
 }
 
 function openAccountModal(accId = null) {
   const acc = accId ? state.accounts.find(a => a.id === accId) : null;
-  document.getElementById('modal-acc-title').textContent = acc ? `Editar — ${acc.name}` : 'Nova Conta ou Cartão';
+  document.getElementById('modal-acc-title').textContent = acc ? `Editar — ${acc.name}` : 'Nova conta ou cartão';
   document.getElementById('acc-id').value = acc ? acc.id : '';
   document.getElementById('acc-name').value = acc ? acc.name : '';
   document.getElementById('acc-type').value = acc ? acc.type : 'Conta + Cartão';
@@ -5235,12 +5640,10 @@ function openAccountModal(accId = null) {
   document.getElementById('acc-limit').value = acc ? fromCents(acc.limitCents || 300000).toFixed(2) : '3000.00';
   document.getElementById('acc-closing-day').value = acc ? String(acc.closingDay || 5) : '5';
   document.getElementById('acc-due-day').value = acc ? String(acc.dueDay || 12) : '12';
-  const cardRow = document.getElementById('acc-card-dates-row');
-  const showCardDates = !acc || acc.type === 'Cartão de Crédito' || acc.type === 'Conta + Cartão';
-  if (cardRow) cardRow.style.display = showCardDates ? 'grid' : 'none';
   const delAccBtn = document.getElementById('btn-delete-account');
   if (delAccBtn) delAccBtn.style.display = (acc && state.accounts.length > 1) ? 'inline-flex' : 'none';
-  document.getElementById('modal-account').classList.add('open');
+  updateAccountModalPreview();
+  openFarolModal('modal-account');
   setTimeout(() => document.getElementById('acc-name').focus(), 40);
 }
 
@@ -5276,16 +5679,16 @@ function openDialogModal({ title, message, inputLabel, inputType = 'text', defau
     inputEl.placeholder = placeholder;
   }
 
-  const close = () => modal.classList.remove('open');
-  cancelBtn.onclick = close;
-  closeX.onclick = close;
+  const close = (immediate = false) => closeFarolModal(modal, immediate);
+  cancelBtn.onclick = () => close(false);
+  closeX.onclick = () => close(false);
   form.onsubmit = (e) => {
     e.preventDefault();
-    close();
+    close(true);
     if (onConfirm) onConfirm(hasInput ? inputEl.value : true);
   };
 
-  modal.classList.add('open');
+  openFarolModal(modal);
   setTimeout(() => {
     if (hasInput) {
       inputEl.focus();
@@ -5310,6 +5713,9 @@ function setAuthGateVisibility(showGate) {
   const shell = document.getElementById('main-app-shell');
   if (gate) gate.style.display = showGate ? 'flex' : 'none';
   if (shell) shell.style.display = showGate ? 'none' : 'grid';
+  if (showGate) {
+    document.documentElement.setAttribute('data-theme', 'light');
+  }
 }
 
 function startOtpCooldownTimer(seconds = 60) {
@@ -5410,6 +5816,8 @@ function setAuthGateMode(mode) {
   if (modeInput) modeInput.value = isReg ? 'register' : 'login';
   if (titleEl) titleEl.textContent = isReg ? 'Crie sua conta' : 'Acesse sua conta';
   if (nameWrap) nameWrap.style.display = isReg ? 'flex' : 'none';
+  const pwInput = document.getElementById('gate-password');
+  if (pwInput) pwInput.setAttribute('autocomplete', isReg ? 'new-password' : 'current-password');
   if (submitLabel) submitLabel.textContent = isReg ? 'CRIAR CONTA' : 'ENTRAR';
   if (heroTitle) heroTitle.textContent = isReg ? 'JÁ TEM CONTA?' : 'BEM-VINDO!';
   if (heroSub) {
@@ -5591,7 +5999,10 @@ function openAuthModal() {
     if (submitBtn) submitBtn.textContent = mode === 'register' ? 'Criar minha conta' : 'Entrar na conta';
   }
 
-  modal.classList.add('open');
+  const railBadge = document.getElementById('auth-rail-badge');
+  if (railBadge) railBadge.textContent = (cloudSessionUser && cloudSessionUser.email) ? 'Conectado ao PostgreSQL' : 'PostgreSQL + 2FA';
+
+  openFarolModal(modal);
 }
 
 function bindAuthEvents() {
@@ -5808,11 +6219,17 @@ function bindAuthEvents() {
       const mode = btn.dataset.authTab;
       const modeInput = document.getElementById('auth-mode');
       const nameGroup = document.getElementById('auth-name-group');
+      const pwInput = document.getElementById('auth-password');
       const submitBtn = document.getElementById('btn-auth-submit');
       const feedback = document.getElementById('auth-feedback');
       if (modeInput) modeInput.value = mode;
-      document.querySelectorAll('[data-auth-tab]').forEach(b => b.classList.toggle('active', b.dataset.authTab === mode));
+      document.querySelectorAll('[data-auth-tab]').forEach(b => {
+        const isAct = b.dataset.authTab === mode;
+        b.classList.toggle('active', isAct);
+        b.setAttribute('aria-pressed', isAct ? 'true' : 'false');
+      });
       if (nameGroup) nameGroup.style.display = mode === 'register' ? 'flex' : 'none';
+      if (pwInput) pwInput.setAttribute('autocomplete', mode === 'register' ? 'new-password' : 'current-password');
       if (submitBtn) submitBtn.textContent = mode === 'register' ? 'Criar minha conta' : 'Entrar na conta';
       if (feedback) feedback.style.display = 'none';
     });
@@ -5831,7 +6248,7 @@ function bindAuthEvents() {
         window.localStorage.removeItem(AUTH_SESSION_STORAGE_KEY);
       }
       updateAuthHeaderBadge();
-      document.getElementById('modal-auth')?.classList.remove('open');
+      closeFarolModal('modal-auth', true);
       setAuthGateVisibility(true);
     });
   }
@@ -5875,14 +6292,14 @@ function bindAuthEvents() {
         }
 
         if (data.step === 'verify_otp') {
-          document.getElementById('modal-auth')?.classList.remove('open');
+          closeFarolModal('modal-auth', true);
           setAuthGateVisibility(true);
           showOtpVerificationStep(data);
           return;
         }
 
         applyAuthenticatedUser(data.user, data.state, true);
-        document.getElementById('modal-auth')?.classList.remove('open');
+        closeFarolModal('modal-auth');
         showUndoToast(`Conectado como ${data.user.email}. Dados salvos na nuvem!`);
       } catch {
         showMsg('Erro de conexão com o servidor.', true);
