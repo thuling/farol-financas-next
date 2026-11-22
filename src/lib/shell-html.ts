@@ -547,9 +547,9 @@ export const FAROL_SHELL_HTML = `<!-- ==================== TELA INICIAL DE LOGIN
                     </div>
                   </div>
                 </div>
-                <label class="pro-checkbox-row" for="tx-is-recurring">
+                <label class="pro-checkbox-row" id="tx-recurring-wrap" for="tx-is-recurring">
                   <input type="checkbox" id="tx-is-recurring" name="isRecurring" />
-                  <span>Repetir mensalmente (salvar em Recorrências)</span>
+                  <span id="tx-recurring-label">Repetir mensalmente (salvar em Recorrências)</span>
                 </label>
               </details>
             </div>

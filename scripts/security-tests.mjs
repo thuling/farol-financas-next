@@ -165,7 +165,7 @@ function read(rel) {
   const runnable = engineSrc.replace(/export\s+function\s+initFarolApp/, 'function initFarolApp');
   new vm.Script(
     runnable +
-      '\nglobalThis.__sec = { esc, safeCssColor, getCleanEmptyState, setState: s => { state = s; }, getState: () => state, getTxFilter: () => txFilter, setTxFilter: f => { txFilter = { ...txFilter, ...f }; }, getFilteredTransactions, getAccountBalanceCents, computeMonthMetrics, isInternalTransferTx, renderVisaoGeral, renderTransacoesView, renderRecorrenciasView, renderFluxoCaixaView, renderFaturasView, renderCategoriasView, renderMetasView, renderPatrimonioView, renderContasView, renderInvoiceReviewTable, setReviewItems: arr => { invoiceReviewItems = arr; } };'
+      '\nglobalThis.__sec = { esc, safeCssColor, getCleanEmptyState, setState: s => { state = s; }, getState: () => state, getTxFilter: () => txFilter, setTxFilter: f => { txFilter = { ...txFilter, ...f }; }, getFilteredTransactions, getAccountBalanceCents, getInvoiceMonthForTransaction, computeMonthMetrics, isInternalTransferTx, sanitizeWorkspaceInstallments, hasDuplicateInstallmentTx, clampDayToYM, syncRecurrencesForMonth, renderVisaoGeral, renderTransacoesView, renderRecorrenciasView, renderFluxoCaixaView, renderFaturasView, renderCategoriasView, renderMetasView, renderPatrimonioView, renderContasView, renderInvoiceReviewTable, setReviewItems: arr => { invoiceReviewItems = arr; } };'
   ).runInContext(ctx);
 
   const sec = ctx.__sec;
@@ -292,4 +292,108 @@ function read(rel) {
   assert.equal(sec.getAccountBalanceCents(st.accounts[0]), balBefore + 20000, 'Withdrawal credited to account must raise bank balance');
   assert.equal(sec.computeMonthMetrics('2026-11').incomeCents, incBefore, 'Patrimônio withdrawal must not inflate operational monthly income');
   console.log('PASS [Feature 6] Transaction date/type/method filters, sortable headers, and Patrimônio withdrawal verified');
+
+  // 7. Installment Deduplication, Account Healing, Invoice Closing Collision, and Recurrence Safety
+  {
+    const dirty = sec.getCleanEmptyState('Conta Parcelada');
+    dirty.selectedMonth = '2026-11';
+    dirty.accounts = [
+      { id: 'acc-card', name: 'Nubank', type: 'Conta + Cartão', initialBalanceCents: 100000, limitCents: 500000, closingDay: 28, dueDay: 10 },
+      { id: 'acc-cc', name: 'Conta Corrente', type: 'Conta Corrente', initialBalanceCents: 200000, limitCents: 0, closingDay: 5, dueDay: 12 },
+    ];
+    dirty.recurrences = [
+      // Bogus recurrence accidentally created alongside a 3x installment purchase
+      { id: 'rec-bogus', description: 'Notebook Gamer', amountCents: 300000, type: 'expense', categoryId: 'cat-compras', accountId: 'acc-card', day: 10, active: true },
+      // Legitimate single recurring expense
+      { id: 'rec-legit', description: 'Internet Fibra', amountCents: 12000, type: 'expense', categoryId: 'cat-moradia', accountId: 'acc-cc', day: 15, active: true },
+    ];
+    dirty.transactions = [
+      // Real 3x installment series + duplicate copy in Dec + shifted copy + invalid Feb 31 date
+      { id: 'tx-nb-1', type: 'expense', amountCents: 100000, description: 'Notebook Gamer (1/3)', tag: 'parcelado', categoryId: 'cat-compras', accountId: 'acc-card', date: '2026-11-10', method: 'Cartão de Crédito' },
+      { id: 'tx-nb-2', type: 'expense', amountCents: 100000, description: 'Notebook Gamer (2/3)', tag: 'parcelado', categoryId: 'cat-compras', accountId: 'acc-card', date: '2026-12-10', method: 'Cartão de Crédito' },
+      { id: 'tx-nb-2-dup', type: 'expense', amountCents: 100000, description: 'notebook gamer (2/3)', tag: 'parcelado', categoryId: 'cat-compras', accountId: 'acc-card', date: '2026-12-12', method: 'Cartão de Crédito' },
+      { id: 'tx-nb-2-shift', type: 'expense', amountCents: 100000, description: 'Notebook Gamer (2/3)', tag: 'parcelado', categoryId: 'cat-compras', accountId: 'acc-card', date: '2026-11-10', method: 'Cartão de Crédito' },
+      { id: 'tx-nb-3', type: 'expense', amountCents: 100000, description: 'Notebook Gamer (3/3)', tag: 'parcelado', categoryId: 'cat-compras', accountId: 'acc-card', date: '2027-01-10', method: 'Cartão de Crédito' },
+      { id: 'tx-nb-3-dup', type: 'expense', amountCents: 100001, description: 'Notebook Gamer (3/3)', tag: 'parcelado', categoryId: 'cat-compras', accountId: 'acc-card', date: '2027-01-10', method: 'Cartão de Crédito' },
+      // Bogus recurrence generated copies across months
+      { id: 'tx-rec-bogus-2026-11', recurrenceId: 'rec-bogus', type: 'expense', amountCents: 300000, description: 'Notebook Gamer', tag: 'recorrente', categoryId: 'cat-compras', accountId: 'acc-card', date: '2026-11-10', method: 'Cartão de Crédito' },
+      { id: 'tx-rec-bogus-2026-12', recurrenceId: 'rec-bogus', type: 'expense', amountCents: 300000, description: 'Notebook Gamer', tag: 'recorrente', categoryId: 'cat-compras', accountId: 'acc-card', date: '2026-12-10', method: 'Cartão de Crédito' },
+      // Orphan tx from an already-deleted bogus recurrence on checking account (was draining saldo!)
+      { id: 'tx-orphan-rec', recurrenceId: 'rec-deleted-old', type: 'expense', amountCents: 100000, description: 'Notebook Gamer', tag: 'recorrente', categoryId: 'cat-compras', accountId: 'acc-card', date: '2027-01-10', method: 'Recorrência Automática' },
+      // Legitimate single recurring expense duplicated in Nov (manual + auto)
+      { id: 'tx-net-manual', type: 'expense', amountCents: 12000, description: 'Internet Fibra', tag: '', categoryId: 'cat-moradia', accountId: 'acc-cc', date: '2026-11-15', method: 'Conta Corrente / Pix' },
+      { id: 'tx-rec-legit-2026-11', recurrenceId: 'rec-legit', type: 'expense', amountCents: 12000, description: 'Internet Fibra', tag: 'recorrente', categoryId: 'cat-moradia', accountId: 'acc-cc', date: '2026-11-15', method: 'Recorrência Automática' },
+      // Distinct purchase with same name & installment index but DIFFERENT value must NOT be deleted
+      { id: 'tx-nb-other-price', type: 'expense', amountCents: 45000, description: 'Notebook Gamer (2/3)', tag: 'parcelado', categoryId: 'cat-compras', accountId: 'acc-card', date: '2026-12-10', method: 'Cartão de Crédito' },
+      // Closing day 28 collision (Jan 30 -> Feb invoice; Feb 31 -> clamped Feb 28 -> must get Mar invoice)
+      { id: 'tx-col-1', type: 'expense', amountCents: 25000, description: 'Celular (1/2)', tag: 'parcelado', categoryId: 'cat-compras', accountId: 'acc-card', date: '2026-01-30', method: 'Cartão de Crédito' },
+      { id: 'tx-col-2', type: 'expense', amountCents: 25000, description: 'Celular (2/2)', tag: 'parcelado', categoryId: 'cat-compras', accountId: 'acc-card', date: '2026-02-31', method: 'Cartão de Crédito' },
+    ];
+
+    const res = sec.sanitizeWorkspaceInstallments(dirty);
+    assert.equal(res.changed, true, 'Dirty workspace must be healed');
+    assert.equal(res.removedRecurrences, 1, 'Bogus installment recurrence must be removed');
+    assert.equal(res.fixedDates, 1, 'Invalid 2026-02-31 date must be clamped');
+
+    const nb100 = dirty.transactions.filter(t => t.description.startsWith('Notebook Gamer') && t.amountCents >= 99999);
+    assert.equal(nb100.length, 3, 'Must leave exactly 3 installments (1/3, 2/3, 3/3) of Notebook Gamer');
+    assert.deepEqual([...nb100.map(t => t.date)].sort(), ['2026-11-10', '2026-12-10', '2027-01-10']);
+
+    const otherPrice = dirty.transactions.filter(t => t.id === 'tx-nb-other-price');
+    assert.equal(otherPrice.length, 1, 'Distinct purchase with different amount must be preserved');
+
+    const netNov = dirty.transactions.filter(t => t.description === 'Internet Fibra' && t.date.startsWith('2026-11'));
+    assert.equal(netNov.length, 1, 'Single recurring tx must not be duplicated in Nov');
+    assert.equal(netNov[0].recurrenceId, 'rec-legit', 'Manual tx must be linked to recurrenceId');
+
+    const col1 = dirty.transactions.find(t => t.id === 'tx-col-1');
+    const col2 = dirty.transactions.find(t => t.id === 'tx-col-2');
+    assert.equal(col2.date, '2026-02-28', 'Invalid Feb 31 must clamp to 2026-02-28');
+    assert.equal(sec.getInvoiceMonthForTransaction(col1, dirty.accounts[0]), '2026-02');
+    assert.equal(sec.getInvoiceMonthForTransaction(col2, dirty.accounts[0]), '2026-03', 'Consecutive installment must land on next invoice month, not collide in Feb');
+
+    // Syncing recurrences across Nov, Dec, Jan must NOT recreate any duplicate
+    sec.setState(dirty);
+    sec.syncRecurrencesForMonth('2026-11');
+    sec.syncRecurrencesForMonth('2026-12');
+    sec.syncRecurrencesForMonth('2027-01');
+    assert.equal(
+      dirty.transactions.filter(t => t.description.startsWith('Notebook Gamer') && t.amountCents >= 99999).length,
+      3,
+      'syncRecurrencesForMonth must never duplicate Notebook Gamer installments across months'
+    );
+    assert.equal(
+      dirty.transactions.filter(t => t.description === 'Internet Fibra' && t.date.startsWith('2026-11')).length,
+      1,
+      'syncRecurrencesForMonth must not duplicate linked Nov Internet Fibra'
+    );
+    // Account balance on acc-card must be restored (orphan non-credit recurrence removed)
+    assert.equal(sec.getAccountBalanceCents(dirty.accounts[0]), 100000, 'Card account cash balance must be healed');
+    // Account balance on acc-cc must reflect 3 months of Internet Fibra (Nov, Dec, Jan = 36000) without Nov duplication
+    assert.equal(sec.getAccountBalanceCents(dirty.accounts[1]), 200000 - 36000, 'Checking account balance must reflect single Internet Fibra per month');
+
+    // Duplicate guard helper check (shifted day + 1 cent rounding)
+    assert.equal(
+      sec.hasDuplicateInstallmentTx(dirty.transactions, {
+        accountId: 'acc-card',
+        type: 'expense',
+        amountCents: 100000,
+        description: 'Notebook Gamer (2/3)',
+        date: '2026-12-14'
+      }),
+      true,
+      'Shifted day in same month must be caught as duplicate installment'
+    );
+    assert.equal(sec.clampDayToYM('2026-02', 31), '2026-02-28');
+
+    // Verify server API routes & state-sanitize.ts integration
+    const stateRouteSrc = read('src/app/api/state/route.ts');
+    const authRouteSrc = read('src/app/api/auth/route.ts');
+    const sanitizeSrc = read('src/lib/state-sanitize.ts');
+    assert.ok(stateRouteSrc.includes('sanitizeWorkspaceInstallments'), '/api/state must sanitize workspaces');
+    assert.ok(stateRouteSrc.includes('sanitizeAllWorkspacesOnce'), '/api/state must heal existing workspaces');
+    assert.ok(authRouteSrc.includes('sanitizeWorkspaceInstallments'), '/api/auth must sanitize workspaces');
+    assert.ok(sanitizeSrc.includes('sanitizeAllWorkspacesOnce'), 'state-sanitize.ts must export batch healer');
+    console.log('PASS [Feature 7] Installment deduplication, account healing, invoice closing alignment, and recurrence safety verified');
+  }
 }

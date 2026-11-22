@@ -425,6 +425,425 @@ function upgradeLegacyThemeOnce(st) {
   return st;
 }
 
+// ============================================================
+// SANITIZAÇÃO E DEDUPLICAÇÃO DE PARCELAMENTOS E RECORRÊNCIAS
+// ============================================================
+const INSTALLMENT_DESC_RE = /^(.*?)\s*\((\d{1,2})\s*\/\s*(\d{1,2})\)\s*$/;
+const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const YM_RE = /^(\d{4})-(\d{2})$/;
+
+function normalizeTxText(value) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function clampIsoDate(dateStr) {
+  const raw = String(dateStr ?? '').slice(0, 10);
+  const m = ISO_DATE_RE.exec(raw);
+  if (!m) return raw;
+  const year = parseInt(m[1], 10);
+  const month = parseInt(m[2], 10);
+  const day = parseInt(m[3], 10);
+  if (month < 1 || month > 12) return raw;
+  const maxDay = new Date(year, month, 0).getDate();
+  const clamped = Math.min(maxDay, Math.max(1, day));
+  return `${m[1]}-${m[2]}-${String(clamped).padStart(2, '0')}`;
+}
+
+function clampDayToYM(ym, dayNum) {
+  const m = YM_RE.exec(String(ym || ''));
+  if (!m) return `${ym}-${String(Math.min(28, Math.max(1, Number(dayNum) || 10))).padStart(2, '0')}`;
+  const year = parseInt(m[1], 10);
+  const month = parseInt(m[2], 10);
+  const maxDay = new Date(year, month, 0).getDate();
+  const clamped = Math.min(maxDay, Math.max(1, parseInt(dayNum, 10) || 10));
+  return `${m[1]}-${m[2]}-${String(clamped).padStart(2, '0')}`;
+}
+
+function monthDiffYM(ymA, ymB) {
+  const a = YM_RE.exec(String(ymA || ''));
+  const b = YM_RE.exec(String(ymB || ''));
+  if (!a || !b) return 999;
+  return (parseInt(a[1], 10) - parseInt(b[1], 10)) * 12 + (parseInt(a[2], 10) - parseInt(b[2], 10));
+}
+
+function parseInstallmentMeta(tx) {
+  if (!tx || typeof tx !== 'object') return null;
+  const desc = String(tx.description ?? '').trim();
+  const match = INSTALLMENT_DESC_RE.exec(desc);
+  if (match) {
+    const baseTitle = match[1].trim();
+    const index = parseInt(match[2], 10);
+    const total = parseInt(match[3], 10);
+    if (total > 1 && index >= 1 && index <= total) {
+      return {
+        baseTitle,
+        normalizedBase: normalizeTxText(baseTitle),
+        index,
+        total
+      };
+    }
+  }
+  const idx = Number(tx.installmentIndex);
+  const tot = Number(tx.installmentTotal);
+  if (Number.isInteger(idx) && Number.isInteger(tot) && tot > 1 && idx >= 1 && idx <= tot) {
+    return {
+      baseTitle: desc,
+      normalizedBase: normalizeTxText(desc),
+      index: idx,
+      total: tot
+    };
+  }
+  return null;
+}
+
+function hasDuplicateInstallmentTx(txList, candidate) {
+  const candInst = parseInstallmentMeta(candidate);
+  const candAcc = String(candidate.accountId ?? '');
+  const candType = String(candidate.type ?? 'expense');
+  const candAmt = Math.round(Number(candidate.amountCents) || 0);
+  const candDate = clampIsoDate(candidate.date || '');
+  const candYM = candDate.slice(0, 7);
+
+  if (candInst) {
+    return txList.some(t => {
+      if (!t || String(t.accountId ?? '') !== candAcc || String(t.type ?? 'expense') !== candType) return false;
+      const tInst = parseInstallmentMeta(t);
+      if (!tInst) return false;
+      if (tInst.normalizedBase !== candInst.normalizedBase) return false;
+      if (tInst.index !== candInst.index || tInst.total !== candInst.total) return false;
+      const tAmt = Math.round(Number(t.amountCents) || 0);
+      if (Math.abs(tAmt - candAmt) > 1) return false;
+      const tYM = String(t.date ?? '').slice(0, 7);
+      if (tYM === candYM) return true;
+      return candInst.index > 1 && Math.abs(monthDiffYM(tYM, candYM)) <= 1;
+    });
+  }
+
+  const candNorm = normalizeTxText(candidate.description);
+  return txList.some(t =>
+    t &&
+    String(t.accountId ?? '') === candAcc &&
+    String(t.type ?? 'expense') === candType &&
+    clampIsoDate(t.date || '') === candDate &&
+    Math.round(Number(t.amountCents) || 0) === candAmt &&
+    normalizeTxText(t.description) === candNorm
+  );
+}
+
+function computeInvoiceYMWithAccounts(tx, accountsById) {
+  if (typeof tx.invoiceMonth === 'string' && YM_RE.test(tx.invoiceMonth)) {
+    return tx.invoiceMonth;
+  }
+  const dateStr = String(tx.date ?? '');
+  const ym = dateStr.slice(0, 7);
+  const acc = accountsById.get(String(tx.accountId ?? ''));
+  const isCard = tx.method === 'Cartão de Crédito' || acc?.type === 'Cartão de Crédito';
+  if (!isCard || !acc || !YM_RE.test(ym)) return ym;
+  const day = parseInt(dateStr.split('-')[2] || '1', 10) || 1;
+  const closingDay = Number(acc.closingDay) || 5;
+  return day > closingDay ? addMonthsYM(ym, 1) : ym;
+}
+
+function sanitizeWorkspaceInstallments(st) {
+  if (!st || typeof st !== 'object' || Array.isArray(st)) {
+    return { state: st, changed: false, removedTransactions: 0, removedRecurrences: 0, fixedDates: 0 };
+  }
+
+  const origTxs = Array.isArray(st.transactions) ? st.transactions : [];
+  const origRecs = Array.isArray(st.recurrences) ? st.recurrences : [];
+  const accounts = Array.isArray(st.accounts) ? st.accounts : [];
+  const accountsById = new Map();
+  accounts.forEach(acc => {
+    if (acc && typeof acc === 'object' && acc.id) accountsById.set(String(acc.id), acc);
+  });
+
+  let changed = false;
+  let removedTransactions = 0;
+  let removedRecurrences = 0;
+  let fixedDates = 0;
+
+  const seenIds = new Set();
+  const stage1 = [];
+  for (const rawTx of origTxs) {
+    if (!rawTx || typeof rawTx !== 'object') {
+      changed = true;
+      removedTransactions++;
+      continue;
+    }
+    const tx = { ...rawTx };
+    const id = typeof tx.id === 'string' ? tx.id : '';
+    if (id) {
+      if (seenIds.has(id)) {
+        changed = true;
+        removedTransactions++;
+        continue;
+      }
+      seenIds.add(id);
+    }
+    if (typeof tx.date === 'string' && ISO_DATE_RE.test(tx.date.slice(0, 10))) {
+      const clamped = clampIsoDate(tx.date);
+      if (clamped !== tx.date) {
+        tx.date = clamped;
+        changed = true;
+        fixedDates++;
+      }
+    }
+    const inst = parseInstallmentMeta(tx);
+    if (inst) {
+      if (Number(tx.installmentIndex) !== inst.index) {
+        tx.installmentIndex = inst.index;
+        changed = true;
+      }
+      if (Number(tx.installmentTotal) !== inst.total) {
+        tx.installmentTotal = inst.total;
+        changed = true;
+      }
+    }
+    stage1.push(tx);
+  }
+
+  const seriesByBaseKey = new Map();
+  const seriesBySeriesKey = new Map();
+  for (const tx of stage1) {
+    const inst = parseInstallmentMeta(tx);
+    if (!inst) continue;
+    const accId = String(tx.accountId ?? '');
+    const type = String(tx.type ?? 'expense');
+    const amt = Math.round(Number(tx.amountCents) || 0);
+    const ym = String(tx.date ?? '').slice(0, 7);
+    const baseKey = `${accId}|${type}|${inst.normalizedBase}`;
+    const seriesKey = `${baseKey}|${inst.total}`;
+
+    let summary = seriesBySeriesKey.get(seriesKey);
+    if (!summary) {
+      summary = {
+        accountId: accId,
+        type,
+        normalizedBase: inst.normalizedBase,
+        total: inst.total,
+        sampleAmountCents: amt,
+        estimatedTotalCents: amt * inst.total,
+        firstIndexMonths: new Set()
+      };
+      seriesBySeriesKey.set(seriesKey, summary);
+      const list = seriesByBaseKey.get(baseKey) || [];
+      list.push(summary);
+      seriesByBaseKey.set(baseKey, list);
+    }
+    if (inst.index === 1 && ym) {
+      summary.firstIndexMonths.add(ym);
+    }
+  }
+
+  const bogusRecIds = new Set();
+  const cleanedRecs = [];
+  for (const rawRec of origRecs) {
+    if (!rawRec || typeof rawRec !== 'object') {
+      changed = true;
+      removedRecurrences++;
+      continue;
+    }
+    const recId = String(rawRec.id ?? '');
+    const recAccId = String(rawRec.accountId ?? '');
+    const recType = String(rawRec.type ?? 'expense');
+    const recAmt = Math.round(Number(rawRec.amountCents) || 0);
+    const recDescNorm = normalizeTxText(rawRec.description);
+    const recInst = parseInstallmentMeta(rawRec);
+    const lookupNorm = recInst ? recInst.normalizedBase : recDescNorm;
+
+    const matchingSeries = seriesByBaseKey.get(`${recAccId}|${recType}|${lookupNorm}`) || [];
+    const matchesInstallmentAmount = matchingSeries.some(
+      s => Math.abs(recAmt - s.estimatedTotalCents) <= s.total + 2 || Math.abs(recAmt - s.sampleAmountCents) <= 2
+    );
+
+    if (matchingSeries.length > 0 && (matchesInstallmentAmount || recInst !== null)) {
+      if (recId) bogusRecIds.add(recId);
+      changed = true;
+      removedRecurrences++;
+      continue;
+    }
+
+    cleanedRecs.push(rawRec);
+  }
+
+  const activeRecIds = new Set(cleanedRecs.map(r => String(r.id ?? '')).filter(Boolean));
+  const stage2 = [];
+  const seenInstSameMonth = new Map();
+  const seenInstByGroup = new Set();
+  const seenInstBySeriesIdx = new Map();
+  const seenRecMonth = new Set();
+
+  for (const tx of stage1) {
+    const recId = typeof tx.recurrenceId === 'string' ? tx.recurrenceId : '';
+    if (recId && bogusRecIds.has(recId)) {
+      changed = true;
+      removedTransactions++;
+      continue;
+    }
+
+    if (recId && recId !== 'rec-salary' && !activeRecIds.has(recId)) {
+      const txAccId = String(tx.accountId ?? '');
+      const txType = String(tx.type ?? 'expense');
+      const txAmt = Math.round(Number(tx.amountCents) || 0);
+      const txNorm = normalizeTxText(tx.description);
+      const matchingSeries = seriesByBaseKey.get(`${txAccId}|${txType}|${txNorm}`) || [];
+      const matchesSeries = matchingSeries.some(
+        s => Math.abs(txAmt - s.estimatedTotalCents) <= s.total + 2 || Math.abs(txAmt - s.sampleAmountCents) <= 2
+      );
+      if (matchesSeries) {
+        changed = true;
+        removedTransactions++;
+        continue;
+      }
+    }
+
+    const ym = String(tx.date ?? '').slice(0, 7);
+    if (recId && ym) {
+      const recMonthKey = `${recId}|${ym}`;
+      if (seenRecMonth.has(recMonthKey)) {
+        changed = true;
+        removedTransactions++;
+        continue;
+      }
+      seenRecMonth.add(recMonthKey);
+    }
+
+    const inst = parseInstallmentMeta(tx);
+    if (inst) {
+      const accId = String(tx.accountId ?? '');
+      const type = String(tx.type ?? 'expense');
+      const amt = Math.round(Number(tx.amountCents) || 0);
+      const grpId = typeof tx.installmentGroupId === 'string' && tx.installmentGroupId ? tx.installmentGroupId : '';
+
+      if (grpId) {
+        const grpKey = `${grpId}|${inst.index}`;
+        if (seenInstByGroup.has(grpKey)) {
+          changed = true;
+          removedTransactions++;
+          continue;
+        }
+        seenInstByGroup.add(grpKey);
+      }
+
+      const monthKey = `${accId}|${type}|${ym}|${inst.normalizedBase}|${inst.index}|${inst.total}`;
+      const sameMonthExisting = seenInstSameMonth.get(monthKey) || [];
+      const dupInSameMonth = sameMonthExisting.find(prev => Math.abs((Number(prev.amountCents) || 0) - amt) <= 1);
+      if (dupInSameMonth) {
+        if (!dupInSameMonth.installmentGroupId && grpId) dupInSameMonth.installmentGroupId = grpId;
+        if (!dupInSameMonth.invoiceMonth && tx.invoiceMonth) dupInSameMonth.invoiceMonth = tx.invoiceMonth;
+        changed = true;
+        removedTransactions++;
+        continue;
+      }
+
+      const seriesKey = `${accId}|${type}|${inst.normalizedBase}|${inst.total}`;
+      const seriesSummary = seriesBySeriesKey.get(seriesKey);
+      const idxKey = `${seriesKey}|${inst.index}`;
+      const sameIdxList = seenInstBySeriesIdx.get(idxKey) || [];
+      if (inst.index > 1 && (!seriesSummary || seriesSummary.firstIndexMonths.size <= 1)) {
+        const adjacentDup = sameIdxList.find(prev => {
+          const prevAmt = Math.round(Number(prev.amountCents) || 0);
+          const prevYM = String(prev.date ?? '').slice(0, 7);
+          return Math.abs(prevAmt - amt) <= 1 && Math.abs(monthDiffYM(ym, prevYM)) <= 1;
+        });
+        if (adjacentDup) {
+          const firstYM = seriesSummary && seriesSummary.firstIndexMonths.size === 1
+            ? Array.from(seriesSummary.firstIndexMonths)[0]
+            : null;
+          const expectedYM = firstYM ? addMonthsYM(firstYM, inst.index - 1) : null;
+          const prevYM = String(adjacentDup.date ?? '').slice(0, 7);
+          if (expectedYM && ym === expectedYM && prevYM !== expectedYM) {
+            const pos = stage2.indexOf(adjacentDup);
+            if (pos >= 0) stage2[pos] = tx;
+            const listPos = sameIdxList.indexOf(adjacentDup);
+            if (listPos >= 0) sameIdxList[listPos] = tx;
+          }
+          changed = true;
+          removedTransactions++;
+          continue;
+        }
+      }
+
+      sameMonthExisting.push(tx);
+      seenInstSameMonth.set(monthKey, sameMonthExisting);
+      sameIdxList.push(tx);
+      seenInstBySeriesIdx.set(idxKey, sameIdxList);
+    }
+
+    stage2.push(tx);
+  }
+
+  const manualBySignature = new Map();
+  for (const tx of stage2) {
+    if (tx.recurrenceId) continue;
+    const ym = String(tx.date ?? '').slice(0, 7);
+    const sig = `${tx.accountId ?? ''}|${tx.type ?? 'expense'}|${ym}|${Math.round(Number(tx.amountCents) || 0)}|${normalizeTxText(tx.description)}`;
+    if (!manualBySignature.has(sig)) manualBySignature.set(sig, tx);
+  }
+
+  const stage3 = [];
+  for (const tx of stage2) {
+    if (typeof tx.recurrenceId === 'string' && tx.recurrenceId && tx.recurrenceId !== 'rec-salary') {
+      const ym = String(tx.date ?? '').slice(0, 7);
+      const sig = `${tx.accountId ?? ''}|${tx.type ?? 'expense'}|${ym}|${Math.round(Number(tx.amountCents) || 0)}|${normalizeTxText(tx.description)}`;
+      const manualMatch = manualBySignature.get(sig);
+      if (manualMatch && !manualMatch.recurrenceId) {
+        manualMatch.recurrenceId = tx.recurrenceId;
+        changed = true;
+        removedTransactions++;
+        continue;
+      }
+    }
+    stage3.push(tx);
+  }
+
+  const cardSeriesBuckets = new Map();
+  for (const tx of stage3) {
+    const inst = parseInstallmentMeta(tx);
+    if (!inst) continue;
+    const acc = accountsById.get(String(tx.accountId ?? ''));
+    const isCard = tx.method === 'Cartão de Crédito' || acc?.type === 'Cartão de Crédito';
+    if (!isCard || !acc) continue;
+    const bucketKey = tx.installmentGroupId
+      ? `grp:${tx.installmentGroupId}`
+      : `ser:${tx.accountId ?? ''}|${tx.type ?? 'expense'}|${inst.normalizedBase}|${inst.total}`;
+    const list = cardSeriesBuckets.get(bucketKey) || [];
+    list.push({ tx, inst });
+    cardSeriesBuckets.set(bucketKey, list);
+  }
+
+  for (const items of cardSeriesBuckets.values()) {
+    if (items.length < 2) continue;
+    items.sort((a, b) => a.inst.index - b.inst.index);
+    const invMonths = items.map(it => computeInvoiceYMWithAccounts(it.tx, accountsById));
+    if (new Set(invMonths).size < invMonths.length) {
+      const firstItem = items[0];
+      const baseInvYM = computeInvoiceYMWithAccounts(firstItem.tx, accountsById);
+      if (YM_RE.test(baseInvYM)) {
+        for (const it of items) {
+          const expectedYM = addMonthsYM(baseInvYM, it.inst.index - firstItem.inst.index);
+          if (it.tx.invoiceMonth !== expectedYM) {
+            it.tx.invoiceMonth = expectedYM;
+            changed = true;
+          }
+        }
+      }
+    }
+  }
+
+  if (changed) {
+    st.transactions = stage3;
+    st.recurrences = cleanedRecs;
+  }
+
+  return { state: st, changed, removedTransactions, removedRecurrences, fixedDates };
+}
+
 function loadStateForUser(userId = usersIndex.activeUserId, fallbackName = null) {
   const targetId = userId || 'user-default';
   const resolvedName = fallbackName || usersIndex.users.find(u => u.id === targetId)?.name || 'Meu nome';
@@ -436,7 +855,14 @@ function loadStateForUser(userId = usersIndex.activeUserId, fallbackName = null)
     if (isUntouchedDemoState(stored)) {
       return cleanBase;
     }
-    return upgradeLegacyThemeOnce(mergeDefaultCategories({ ...cleanBase, ...stored }));
+    const merged = upgradeLegacyThemeOnce(mergeDefaultCategories({ ...cleanBase, ...stored }));
+    const cleaned = sanitizeWorkspaceInstallments(merged);
+    if (cleaned.changed) {
+      try {
+        window.localStorage.setItem(getUserStorageKey(targetId), JSON.stringify(cleaned.state));
+      } catch (e) {}
+    }
+    return cleaned.state;
   }
 
   if (targetId === 'user-default') {
@@ -444,8 +870,9 @@ function loadStateForUser(userId = usersIndex.activeUserId, fallbackName = null)
       const legacyRaw = window.localStorage.getItem(LEGACY_V1_KEY);
       if (legacyRaw && legacyRaw !== 'undefined') {
         const migrated = upgradeLegacyThemeOnce(mergeDefaultCategories(migrateLegacyV1(JSON.parse(legacyRaw))));
-        window.localStorage.setItem(getUserStorageKey(targetId), JSON.stringify(migrated));
-        return migrated;
+        const cleaned = sanitizeWorkspaceInstallments(migrated);
+        window.localStorage.setItem(getUserStorageKey(targetId), JSON.stringify(cleaned.state));
+        return cleaned.state;
       }
     } catch (e) {}
   }
@@ -483,6 +910,9 @@ function getAccountById(id) {
 
 // Regra de fechamento: compras no cartão após o dia de fechamento vão para a fatura seguinte
 function getInvoiceMonthForTransaction(tx, account) {
+  if (tx && typeof tx.invoiceMonth === 'string' && YM_RE.test(tx.invoiceMonth)) {
+    return tx.invoiceMonth;
+  }
   const ym = (tx.date || state.selectedMonth).slice(0, 7);
   const isCard = tx.method === 'Cartão de Crédito' || account?.type === 'Cartão de Crédito';
   if (!isCard || !account) return ym;
@@ -706,29 +1136,59 @@ function syncRecurrencesForMonth(ym = state.selectedMonth) {
     const exists = state.transactions.some(
       t => t.recurrenceId === r.id && (t.date || '').startsWith(ym)
     );
-    if (!exists) {
-      const dayStr = String(Math.min(28, Math.max(1, Number(r.day) || 10))).padStart(2, '0');
-      const targetAccId = r.accountId || state.accounts[0]?.id || 'acc-nubank';
-      const targetAcc = getAccountById(targetAccId);
-      const recType = r.type || 'expense';
-      const isCardAccount = targetAcc.type === 'Cartão de Crédito' || targetAcc.type === 'Conta + Cartão';
-      const recMethod = (recType === 'expense' && isCardAccount)
-        ? 'Cartão de Crédito'
-        : 'Recorrência Automática';
-      state.transactions.push({
-        id: `tx-${r.id}-${ym}`,
-        recurrenceId: r.id,
-        type: recType,
-        amountCents: Number(r.amountCents) || 0,
-        description: r.description,
-        tag: 'recorrente',
-        categoryId: r.categoryId,
-        accountId: targetAccId,
-        date: `${ym}-${dayStr}`,
-        method: recMethod
-      });
+    if (exists) return;
+
+    const targetAccId = r.accountId || state.accounts[0]?.id || 'acc-nubank';
+    const recType = r.type || 'expense';
+    const recAmt = Math.round(Number(r.amountCents) || 0);
+    const recDescNorm = normalizeTxText(r.description);
+
+    // Se já existe lançamento manual idêntico no mesmo mês, apenas vincula recurrenceId sem duplicar
+    const manualMatch = state.transactions.find(
+      t =>
+        !t.recurrenceId &&
+        (t.date || '').startsWith(ym) &&
+        t.accountId === targetAccId &&
+        (t.type || 'expense') === recType &&
+        Math.round(Number(t.amountCents) || 0) === recAmt &&
+        normalizeTxText(t.description) === recDescNorm
+    );
+    if (manualMatch) {
+      manualMatch.recurrenceId = r.id;
       changed = true;
+      return;
     }
+
+    // Não materializa recorrência se já houver parcela (k/N) ativa da mesma compra neste mês
+    const conflictsWithInstallment = state.transactions.some(t => {
+      if (!(t.date || '').startsWith(ym)) return false;
+      if (t.accountId !== targetAccId || (t.type || 'expense') !== recType) return false;
+      const inst = parseInstallmentMeta(t);
+      if (!inst || inst.normalizedBase !== recDescNorm) return false;
+      const tAmt = Math.round(Number(t.amountCents) || 0);
+      return Math.abs(recAmt - tAmt) <= 2 || Math.abs(recAmt - tAmt * inst.total) <= inst.total + 2;
+    });
+    if (conflictsWithInstallment) return;
+
+    const dayStr = String(Math.min(28, Math.max(1, Number(r.day) || 10))).padStart(2, '0');
+    const targetAcc = getAccountById(targetAccId);
+    const isCardAccount = targetAcc.type === 'Cartão de Crédito' || targetAcc.type === 'Conta + Cartão';
+    const recMethod = (recType === 'expense' && isCardAccount)
+      ? 'Cartão de Crédito'
+      : 'Recorrência Automática';
+    state.transactions.push({
+      id: `tx-${r.id}-${ym}`,
+      recurrenceId: r.id,
+      type: recType,
+      amountCents: recAmt,
+      description: r.description,
+      tag: 'recorrente',
+      categoryId: r.categoryId,
+      accountId: targetAccId,
+      date: `${ym}-${dayStr}`,
+      method: recMethod
+    });
+    changed = true;
   });
 
   if (changed) saveState();
@@ -2472,7 +2932,13 @@ function openImportInvoiceModal(preselectedAccountId = null) {
 }
 
 function bindImportInvoiceModalEvents() {
-  if (invoiceModalBound) return;
+  const modalEl = document.getElementById('modal-import-invoice');
+  if (modalEl) {
+    if (modalEl.dataset.importBound === '1') return;
+    modalEl.dataset.importBound = '1';
+  } else if (invoiceModalBound) {
+    return;
+  }
   invoiceModalBound = true;
 
   const fileInput = document.getElementById('imp-file-input');
@@ -2728,65 +3194,68 @@ function bindImportInvoiceModalEvents() {
 
   if (confirmBtn) {
     confirmBtn.addEventListener('click', () => {
+      if (confirmBtn.dataset.busy === '1') return;
       const targetAccId = document.getElementById('imp-target-account')?.value || state.accounts[0]?.id || 'acc-nubank';
       const targetAcc = getAccountById(targetAccId);
       const projectFuture = Boolean(document.getElementById('imp-project-installments')?.checked);
       const selectedRows = invoiceReviewItems.filter(it => it.include && it.entryKind !== 'payment');
       if (selectedRows.length === 0) return;
 
-      undoSnapshot = JSON.parse(JSON.stringify(state.transactions));
-      let addedCurrent = 0;
-      let addedFuture = 0;
-      let addedRefunds = 0;
+      confirmBtn.dataset.busy = '1';
+      try {
+        undoSnapshot = JSON.parse(JSON.stringify(state.transactions));
+        let addedCurrent = 0;
+        let addedFuture = 0;
+        let addedRefunds = 0;
+        const batchTs = Date.now();
 
-      selectedRows.forEach((row, idx) => {
-        const amountCents = Math.round((Number(row.amount) || 0) * 100);
-        if (amountCents <= 0) return;
-        const curInst = Math.max(1, Number(row.currentInstallment) || 1);
-        const totInst = Math.max(curInst, Number(row.totalInstallments) || 1);
-        const baseDate = /^\d{4}-\d{2}-\d{2}/.test(row.date || '') ? row.date.slice(0, 10) : `${state.selectedMonth}-10`;
-        const baseYM = baseDate.slice(0, 7);
-        const baseDayStr = baseDate.slice(8, 10) || '10';
+        selectedRows.forEach((row, idx) => {
+          const amountCents = Math.round((Number(row.amount) || 0) * 100);
+          if (amountCents <= 0) return;
+          const curInst = Math.max(1, Number(row.currentInstallment) || 1);
+          const totInst = Math.max(curInst, Number(row.totalInstallments) || 1);
+          const rawDate = /^\d{4}-\d{2}-\d{2}/.test(row.date || '') ? row.date.slice(0, 10) : `${state.selectedMonth}-10`;
+          const baseDate = clampIsoDate(rawDate);
+          const baseYM = baseDate.slice(0, 7);
+          const baseDayNum = parseInt(baseDate.slice(8, 10), 10) || 10;
 
-        // 1. Estornos: abatem o valor da fatura e registram o crédito
-        if (row.entryKind === 'refund') {
-          const invYM = getInvoiceMonthForTransaction({ date: baseDate, method: 'Cartão de Crédito', type: 'expense' }, targetAcc);
-          const curMeta = getInvoiceMeta(targetAcc.id, invYM);
-          setInvoiceMeta(targetAcc.id, {
-            adjustmentCents: (Number(curMeta.adjustmentCents) || 0) - amountCents
-          }, invYM);
+          // 1. Estornos: abatem o valor da fatura e registram o crédito
+          if (row.entryKind === 'refund') {
+            const invYM = getInvoiceMonthForTransaction({ date: baseDate, method: 'Cartão de Crédito', type: 'expense' }, targetAcc);
+            const curMeta = getInvoiceMeta(targetAcc.id, invYM);
+            setInvoiceMeta(targetAcc.id, {
+              adjustmentCents: (Number(curMeta.adjustmentCents) || 0) - amountCents
+            }, invYM);
 
-          state.transactions.push({
-            id: `tx-refund-${Date.now()}-${idx}`,
-            type: 'income',
-            amountCents,
-            description: `Estorno Fatura: ${row.cleanTitle}`,
-            tag: 'estorno',
-            categoryId: row.categoryId,
-            accountId: targetAcc.id,
-            date: baseDate,
-            method: 'Estorno Cartão'
-          });
-          addedRefunds++;
-          return;
-        }
+            state.transactions.push({
+              id: `tx-refund-${batchTs}-${idx}`,
+              type: 'income',
+              amountCents,
+              description: `Estorno Fatura: ${row.cleanTitle}`,
+              tag: 'estorno',
+              categoryId: row.categoryId,
+              accountId: targetAcc.id,
+              date: baseDate,
+              method: 'Estorno Cartão'
+            });
+            addedRefunds++;
+            return;
+          }
 
-        // 2. Compras à vista ou parceladas (Parcela X/Y)
-        const descCur = totInst > 1 ? `${row.cleanTitle} (${curInst}/${totInst})` : row.cleanTitle;
-        const groupId = totInst > 1 ? `instgrp-${Date.now()}-${idx}` : undefined;
+          // 2. Compras à vista ou parceladas (Parcela X/Y)
+          const descCur = totInst > 1 ? `${row.cleanTitle} (${curInst}/${totInst})` : row.cleanTitle;
+          const groupId = totInst > 1 ? `instgrp-${batchTs}-${idx}` : undefined;
+          const baseInvoiceYM = getInvoiceMonthForTransaction(
+            { date: baseDate, method: 'Cartão de Crédito', type: 'expense' },
+            targetAcc
+          );
 
-        const isDupCur = state.transactions.some(t =>
-          t.accountId === targetAcc.id &&
-          t.date === baseDate &&
-          t.amountCents === amountCents &&
-          (t.description || '').toLowerCase() === descCur.toLowerCase()
-        );
-        if (!isDupCur) {
-          state.transactions.push({
-            id: `tx-imp-${Date.now()}-${idx}`,
+          const curCandidate = {
+            id: `tx-imp-${batchTs}-${idx}`,
             installmentGroupId: groupId,
             installmentIndex: curInst,
             installmentTotal: totInst,
+            invoiceMonth: totInst > 1 ? baseInvoiceYM : undefined,
             type: 'expense',
             amountCents,
             description: descCur,
@@ -2795,31 +3264,29 @@ function bindImportInvoiceModalEvents() {
             accountId: targetAcc.id,
             date: baseDate,
             method: 'Cartão de Crédito'
-          });
-          addedCurrent++;
-        }
+          };
 
-        // 3. Projeção automática das parcelas restantes (X+1/Y até Y/Y) nos próximos meses
-        if (projectFuture && totInst > curInst) {
-          const remaining = totInst - curInst;
-          for (let step = 1; step <= remaining; step++) {
-            const nextInstNum = curInst + step;
-            const futureYM = addMonthsYM(baseYM, step);
-            const futureDate = `${futureYM}-${baseDayStr}`;
-            const futureDesc = `${row.cleanTitle} (${nextInstNum}/${totInst})`;
+          if (!hasDuplicateInstallmentTx(state.transactions, curCandidate)) {
+            state.transactions.push(curCandidate);
+            addedCurrent++;
+          }
 
-            const isDupFuture = state.transactions.some(t =>
-              t.accountId === targetAcc.id &&
-              (t.date || '').startsWith(futureYM) &&
-              t.amountCents === amountCents &&
-              (t.description || '').toLowerCase() === futureDesc.toLowerCase()
-            );
-            if (!isDupFuture) {
-              state.transactions.push({
-                id: `tx-imp-fut-${Date.now()}-${idx}-${step}`,
+          // 3. Projeção automática das parcelas restantes (X+1/Y até Y/Y) nos próximos meses
+          if (projectFuture && totInst > curInst) {
+            const remaining = totInst - curInst;
+            for (let step = 1; step <= remaining; step++) {
+              const nextInstNum = curInst + step;
+              const futureYM = addMonthsYM(baseYM, step);
+              const futureDate = clampDayToYM(futureYM, baseDayNum);
+              const futureDesc = `${row.cleanTitle} (${nextInstNum}/${totInst})`;
+              const futureInvoiceYM = addMonthsYM(baseInvoiceYM, step);
+
+              const futureCandidate = {
+                id: `tx-imp-fut-${batchTs}-${idx}-${step}`,
                 installmentGroupId: groupId,
                 installmentIndex: nextInstNum,
                 installmentTotal: totInst,
+                invoiceMonth: futureInvoiceYM,
                 type: 'expense',
                 amountCents,
                 description: futureDesc,
@@ -2828,25 +3295,33 @@ function bindImportInvoiceModalEvents() {
                 accountId: targetAcc.id,
                 date: futureDate,
                 method: 'Cartão de Crédito'
-              });
-              addedFuture++;
+              };
+
+              if (!hasDuplicateInstallmentTx(state.transactions, futureCandidate)) {
+                state.transactions.push(futureCandidate);
+                addedFuture++;
+              }
             }
           }
-        }
-      });
+        });
 
-      state.lastUsedAccountId = targetAcc.id;
-      if (selectedRows[0]?.date) {
-        state.selectedMonth = selectedRows[0].date.slice(0, 7);
+        sanitizeWorkspaceInstallments(state);
+        state.lastUsedAccountId = targetAcc.id;
+        if (selectedRows[0]?.date) {
+          state.selectedMonth = clampIsoDate(selectedRows[0].date).slice(0, 7);
+        }
+        invoiceReviewItems = [];
+        saveState();
+        closeFarolModal('modal-import-invoice', true);
+        renderApp();
+        showUndoToast(
+          `Fatura importada: ${addedCurrent} compra(s)` +
+          (addedFuture > 0 ? `, +${addedFuture} parcela(s) futura(s)` : '') +
+          (addedRefunds > 0 ? ` e ${addedRefunds} estorno(s)` : '') + '.'
+        );
+      } finally {
+        confirmBtn.dataset.busy = '0';
       }
-      saveState();
-      closeFarolModal('modal-import-invoice');
-      renderApp();
-      showUndoToast(
-        `Fatura importada: ${addedCurrent} compra(s)` +
-        (addedFuture > 0 ? `, +${addedFuture} parcela(s) futura(s)` : '') +
-        (addedRefunds > 0 ? ` e ${addedRefunds} estorno(s)` : '') + '.'
-      );
     });
   }
 }
@@ -3180,7 +3655,7 @@ function bindRecorrenciasEvents() {
       rec.active = !rec.active;
       if (!rec.active) {
         state.transactions = state.transactions.filter(
-          t => !(t.recurrenceId === rec.id && (t.date || '').startsWith(state.selectedMonth))
+          t => !(t.recurrenceId === rec.id && (t.date || '').slice(0, 7) >= state.selectedMonth)
         );
       }
       saveState();
@@ -3197,7 +3672,7 @@ function bindRecorrenciasEvents() {
       const delId = btn.dataset.delRec;
       state.recurrences = state.recurrences.filter(r => r.id !== delId);
       state.transactions = state.transactions.filter(
-        t => !(t.recurrenceId === delId && (t.date || '').startsWith(state.selectedMonth))
+        t => !(t.recurrenceId === delId && (t.date || '').slice(0, 7) >= state.selectedMonth)
       );
       saveState();
       renderApp();
@@ -4405,8 +4880,10 @@ function renderProjecaoView() {
   const selIdx = Math.min(projState.selectedIdx, series.length - 1);
   const activeDetail = series[selIdx] || series[0];
 
-  // Parcelamentos terminando nos próximos meses
-  const endingInstallments = state.transactions.filter(t => /\(\d+\/\d+\)/.test(t.description || ''));
+  // Parcelamentos ativos no mês selecionado (evita somar todas as parcelas futuras juntas)
+  const endingInstallments = getMonthTransactions(state.selectedMonth).filter(
+    t => t.type === 'expense' && parseInstallmentMeta(t) !== null
+  );
   let endingMsg = 'Nenhum parcelamento ativo no cartão para encerrar nos próximos meses.';
   if (endingInstallments.length > 0) {
     const totalReleasedCents = endingInstallments.reduce((s, t) => s + (Number(t.amountCents) || 0), 0);
@@ -5002,14 +5479,14 @@ function closeFarolModal(modalOrId, immediate = false) {
   closeTopLayerModal(modal, immediate);
 }
 
-let farolDialogsBound = false;
 function setupFarolDialogs() {
-  if (farolDialogsBound || typeof document === 'undefined') return;
-  farolDialogsBound = true;
+  if (typeof document === 'undefined') return;
   const needsClosedByFallback = typeof HTMLDialogElement === 'function'
     && !('closedBy' in HTMLDialogElement.prototype);
 
   document.querySelectorAll('dialog.modal-dialog').forEach(dialog => {
+    if (dialog.dataset?.dialogBound === '1') return;
+    if (dialog.dataset) dialog.dataset.dialogBound = '1';
     dialog.addEventListener('cancel', (e) => {
       e.preventDefault();
       closeTopLayerModal(dialog, false);
@@ -5318,17 +5795,40 @@ function openTransactionModal(preselectedAccountId = null, editTxId = null) {
 }
 
 function updateInstallmentUI() {
+  const editId = document.getElementById('tx-id')?.value || '';
   const type = document.getElementById('tx-type').value;
   const method = document.getElementById('tx-method').value;
   const wrap = document.getElementById('tx-installments-wrap');
   const preview = document.getElementById('tx-installment-preview');
-  const isCardExpense = type === 'expense' && method === 'Cartão de Crédito';
+  const recWrap = document.getElementById('tx-recurring-wrap');
+  const recCheck = document.getElementById('tx-is-recurring');
+  const recLabel = document.getElementById('tx-recurring-label');
+  const isCardExpense = !editId && type === 'expense' && method === 'Cartão de Crédito';
 
   wrap.style.display = isCardExpense ? 'flex' : 'none';
+  const count = isCardExpense ? (parseInt(document.getElementById('tx-installments').value, 10) || 1) : 1;
+
   if (isCardExpense) {
     const totalCents = toCents(document.getElementById('tx-amount').value);
-    const count = parseInt(document.getElementById('tx-installments').value, 10) || 1;
     preview.textContent = count > 1 && totalCents > 0 ? `${count}x de ${fmtBRL(Math.round(totalCents / count))}` : 'À vista';
+  }
+
+  if (recWrap) {
+    recWrap.style.display = editId ? 'none' : 'flex';
+  }
+  if (recCheck) {
+    if (count > 1) {
+      recCheck.checked = false;
+      recCheck.disabled = true;
+      if (recLabel) {
+        recLabel.textContent = 'Parcelamentos já criam 1 parcela por mês automaticamente (não precisa marcar recorrência).';
+      }
+    } else {
+      recCheck.disabled = Boolean(editId);
+      if (recLabel) {
+        recLabel.textContent = 'Repetir mensalmente (salvar em Recorrências)';
+      }
+    }
   }
   updateTransactionModalPreview();
 }
@@ -5755,99 +6255,127 @@ export function initFarolApp() {
   document.getElementById('tx-amount').addEventListener('input', updateInstallmentUI);
 
   // Salvar Lançamento Rápido (até 3 toques, centavos inteiros, parcelamento e recorrência)
-  document.getElementById('form-transaction').addEventListener('submit', (e) => {
+  const formTx = document.getElementById('form-transaction');
+  let txFormSubmitting = false;
+  formTx.addEventListener('submit', (e) => {
     e.preventDefault();
-    const editId = document.getElementById('tx-id').value;
-    const type = document.getElementById('tx-type').value;
-    const amountCents = toCents(document.getElementById('tx-amount').value);
-    const categoryId = document.getElementById('tx-category').value || state.categories[0]?.id;
-    const catObj = getCategoryById(categoryId);
-    const rawDesc = document.getElementById('tx-desc').value.trim();
-    const description = rawDesc || catObj.name;
-    const tag = document.getElementById('tx-tag').value.trim();
-    const accountId = document.getElementById('tx-account').value || state.accounts[0]?.id;
-    const date = document.getElementById('tx-date').value || getTodayISO();
-    const method = document.getElementById('tx-method').value;
-    const isRecurring = document.getElementById('tx-is-recurring').checked;
-    const installments = (type === 'expense' && method === 'Cartão de Crédito')
-      ? (parseInt(document.getElementById('tx-installments').value, 10) || 1)
-      : 1;
+    if (txFormSubmitting) return;
+    txFormSubmitting = true;
+    try {
+      const editId = document.getElementById('tx-id').value;
+      const type = document.getElementById('tx-type').value;
+      const amountCents = toCents(document.getElementById('tx-amount').value);
+      const categoryId = document.getElementById('tx-category').value || state.categories[0]?.id;
+      const catObj = getCategoryById(categoryId);
+      const rawDesc = document.getElementById('tx-desc').value.trim();
+      const description = rawDesc || catObj.name;
+      const tag = document.getElementById('tx-tag').value.trim();
+      const accountId = document.getElementById('tx-account').value || state.accounts[0]?.id;
+      const date = clampIsoDate(document.getElementById('tx-date').value || getTodayISO());
+      const method = document.getElementById('tx-method').value;
+      const rawRecurring = document.getElementById('tx-is-recurring').checked;
+      const installments = (!editId && type === 'expense' && method === 'Cartão de Crédito')
+        ? Math.max(1, parseInt(document.getElementById('tx-installments').value, 10) || 1)
+        : 1;
+      // Parcelamento e recorrência são mutuamente exclusivos (parcelado já distribui 1x por mês)
+      const isRecurring = Boolean(rawRecurring && !editId && installments <= 1);
 
-    if (isNaN(amountCents) || amountCents <= 0) return;
+      if (isNaN(amountCents) || amountCents <= 0) return;
 
-    state.lastUsedAccountId = accountId;
+      state.lastUsedAccountId = accountId;
+      const targetAcc = getAccountById(accountId);
 
-    if (editId) {
-      const existing = state.transactions.find(t => t.id === editId);
-      if (existing) {
-        existing.type = type;
-        existing.amountCents = amountCents;
-        existing.description = description;
-        existing.tag = tag;
-        existing.categoryId = categoryId;
-        existing.accountId = accountId;
-        existing.date = date;
-        existing.method = method;
-      }
-    } else if (installments > 1) {
-      const [yStr, mStr, dStr] = date.split('-');
-      const baseYear = parseInt(yStr, 10);
-      const baseMonth = parseInt(mStr, 10) - 1;
-      const baseDay = parseInt(dStr, 10);
-      const perInstallmentCents = Math.floor(amountCents / installments);
-      const remainderCents = amountCents - (perInstallmentCents * installments);
-      const baseTs = Date.now();
+      if (editId) {
+        const existing = state.transactions.find(t => t.id === editId);
+        if (existing) {
+          existing.type = type;
+          existing.amountCents = amountCents;
+          existing.description = description;
+          existing.tag = tag;
+          existing.categoryId = categoryId;
+          existing.accountId = accountId;
+          existing.date = date;
+          existing.method = method;
+          if (existing.invoiceMonth) {
+            delete existing.invoiceMonth;
+          }
+        }
+      } else if (installments > 1) {
+        const [yStr, mStr, dStr] = date.split('-');
+        const baseYear = parseInt(yStr, 10);
+        const baseMonth = parseInt(mStr, 10) - 1;
+        const baseDay = parseInt(dStr, 10);
+        const perInstallmentCents = Math.floor(amountCents / installments);
+        const remainderCents = amountCents - (perInstallmentCents * installments);
+        const baseTs = Date.now();
+        const groupId = `instgrp-${baseTs}`;
+        const baseInvoiceYM = getInvoiceMonthForTransaction({ date, method, type }, targetAcc);
 
-      for (let i = 0; i < installments; i++) {
-        const targetDate = new Date(baseYear, baseMonth + i, 1);
-        const daysInMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0).getDate();
-        const clampedDay = Math.min(baseDay, daysInMonth);
-        const ym = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}`;
-        const formattedDate = `${ym}-${String(clampedDay).padStart(2, '0')}`;
-
+        for (let i = 0; i < installments; i++) {
+          const targetDate = new Date(baseYear, baseMonth + i, 1);
+          const daysInMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0).getDate();
+          const clampedDay = Math.min(baseDay, daysInMonth);
+          const ym = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}`;
+          const formattedDate = `${ym}-${String(clampedDay).padStart(2, '0')}`;
+          const instAmountCents = perInstallmentCents + (i === 0 ? remainderCents : 0);
+          const instDesc = `${description} (${i + 1}/${installments})`;
+          const candidate = {
+            id: `tx-${baseTs}-${i}`,
+            installmentGroupId: groupId,
+            installmentIndex: i + 1,
+            installmentTotal: installments,
+            invoiceMonth: addMonthsYM(baseInvoiceYM, i),
+            type,
+            amountCents: instAmountCents,
+            description: instDesc,
+            tag: tag || 'parcelado',
+            categoryId,
+            accountId,
+            date: formattedDate,
+            method
+          };
+          if (!hasDuplicateInstallmentTx(state.transactions, candidate)) {
+            state.transactions.push(candidate);
+          }
+        }
+      } else {
+        const nowTs = Date.now();
+        let recId = undefined;
+        if (isRecurring) {
+          const day = Math.min(28, Math.max(1, parseInt(date.split('-')[2], 10) || 10));
+          recId = 'rec-' + nowTs;
+          state.recurrences.push({
+            id: recId,
+            description,
+            amountCents,
+            type,
+            categoryId,
+            accountId,
+            day,
+            active: true
+          });
+        }
         state.transactions.push({
-          id: `tx-${baseTs}-${i}`,
+          id: 'tx-' + nowTs,
+          ...(recId ? { recurrenceId: recId } : {}),
           type,
-          amountCents: perInstallmentCents + (i === 0 ? remainderCents : 0),
-          description: `${description} (${i + 1}/${installments})`,
-          tag,
+          amountCents,
+          description,
+          tag: tag || (recId ? 'recorrente' : ''),
           categoryId,
           accountId,
-          date: formattedDate,
+          date,
           method
         });
       }
-    } else {
-      state.transactions.push({
-        id: 'tx-' + Date.now(),
-        type,
-        amountCents,
-        description,
-        tag,
-        categoryId,
-        accountId,
-        date,
-        method
-      });
-    }
 
-    if (isRecurring) {
-      const day = parseInt(date.split('-')[2], 10) || 10;
-      state.recurrences.push({
-        id: 'rec-' + Date.now(),
-        description,
-        amountCents,
-        type,
-        categoryId,
-        accountId,
-        day,
-        active: true
-      });
+      sanitizeWorkspaceInstallments(state);
+      saveState();
+      closeFarolModal('modal-transaction', true);
+      renderApp();
+    } finally {
+      txFormSubmitting = false;
     }
-
-    saveState();
-    closeFarolModal('modal-transaction');
-    renderApp();
   });
 
   // Salvar Perfil e Orçamento
@@ -6469,6 +6997,11 @@ function resolveAuthenticatedWorkspaceState(user, candidateServerState, authPurp
   if (nextState.profile) nextState.profile.name = user.name;
   nextState.isExplicitDemo = false;
   upgradeLegacyThemeOnce(nextState);
+  const sanitizedResolved = sanitizeWorkspaceInstallments(nextState);
+  if (sanitizedResolved.changed) {
+    nextState = sanitizedResolved.state;
+    shouldSync = true;
+  }
 
   return { nextState, shouldSync, migratedFromDefault };
 }

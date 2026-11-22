@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPrisma } from '@/lib/prisma';
 import { ensureDbSchema } from '@/lib/db-init';
 import { SESSION_COOKIE, verifyAuthenticatedSession } from '@/lib/session';
+import { sanitizeWorkspaceInstallments, sanitizeAllWorkspacesOnce } from '@/lib/state-sanitize';
 
 const MAX_STATE_BYTES = 2 * 1024 * 1024; // 2 MB cap per workspace snapshot
 
@@ -20,6 +21,7 @@ export async function GET(req: NextRequest) {
 
   try {
     await ensureDbSchema(prisma);
+    await sanitizeAllWorkspacesOnce(prisma);
     const workspace = await prisma.userWorkspace.findUnique({
       where: { id: userId },
       include: { bankAccounts: true },
@@ -28,7 +30,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, mode: 'postgres', state: null });
     }
 
-    const parsedState = JSON.parse(workspace.stateJson);
+    let parsedState = JSON.parse(workspace.stateJson);
     if (parsedState && typeof parsedState === 'object') {
       parsedState.privacyMode = Boolean(parsedState.privacyMode ?? workspace.hideValues);
       if (
@@ -45,6 +47,17 @@ export async function GET(req: NextRequest) {
           closingDay: b.closingDay,
           dueDay: b.dueDay,
         }));
+      }
+
+      const sanitized = sanitizeWorkspaceInstallments(parsedState);
+      if (sanitized.changed) {
+        parsedState = sanitized.state;
+        await prisma.userWorkspace
+          .update({
+            where: { id: userId },
+            data: { stateJson: JSON.stringify(parsedState) },
+          })
+          .catch(() => {});
       }
     }
 
@@ -83,7 +96,8 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'Payload de estado inválido.' }, { status: 400 });
     }
 
-    const st = state as Record<string, unknown>;
+    const sanitizedPut = sanitizeWorkspaceInstallments(state as Record<string, unknown>);
+    const st = sanitizedPut.state as Record<string, unknown>;
     const serialized = JSON.stringify(st);
     if (serialized.length > MAX_STATE_BYTES) {
       return NextResponse.json({ ok: false, error: 'Tamanho do estado excede o limite permitido.' }, { status: 413 });

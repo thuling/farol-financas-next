@@ -13,6 +13,7 @@ import {
   verifyAuthenticatedSession,
   isAdminEmail,
 } from '@/lib/session';
+import { sanitizeWorkspaceInstallments, sanitizeAllWorkspacesOnce } from '@/lib/state-sanitize';
 
 const OTP_EXPIRATION_MS = 10 * 60 * 1000; // 10 minutos
 const OTP_COOLDOWN_MS = 55 * 1000;       // 60s no cliente (55s de tolerância no servidor)
@@ -354,8 +355,21 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    await sanitizeAllWorkspacesOnce(prisma);
     const workspace = await prisma.userWorkspace.findUnique({ where: { id: auth.user.id } });
-    const parsedState = workspace ? JSON.parse(workspace.stateJson) : null;
+    let parsedState = workspace ? JSON.parse(workspace.stateJson) : null;
+    if (parsedState && typeof parsedState === 'object') {
+      const sanitized = sanitizeWorkspaceInstallments(parsedState);
+      if (sanitized.changed) {
+        parsedState = sanitized.state;
+        await prisma.userWorkspace
+          .update({
+            where: { id: auth.user.id },
+            data: { stateJson: JSON.stringify(parsedState) },
+          })
+          .catch(() => {});
+      }
+    }
 
     return NextResponse.json({
       ok: true,
@@ -525,6 +539,21 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      if (parsedState && typeof parsedState === 'object') {
+        const sanitized = sanitizeWorkspaceInstallments(parsedState);
+        if (sanitized.changed) {
+          parsedState = sanitized.state;
+          if (workspace) {
+            await prisma.userWorkspace
+              .update({
+                where: { id: account.id },
+                data: { stateJson: JSON.stringify(parsedState) },
+              })
+              .catch(() => {});
+          }
+        }
+      }
+
       if (
         !parsedState &&
         activeOtp.purpose !== 'register' &&
@@ -533,9 +562,10 @@ export async function POST(req: NextRequest) {
         !Array.isArray(body.state) &&
         hasCustomizedServerState(body.state)
       ) {
-        const seedJson = JSON.stringify(body.state);
+        const cleanedSeed = sanitizeWorkspaceInstallments(body.state).state;
+        const seedJson = JSON.stringify(cleanedSeed);
         if (seedJson.length <= MAX_STATE_SEED_BYTES) {
-          parsedState = body.state;
+          parsedState = cleanedSeed;
           parsedState.userEmail = account.email;
           if (parsedState.profile) parsedState.profile.name = account.name;
           const profile = parsedState.profile || {};
