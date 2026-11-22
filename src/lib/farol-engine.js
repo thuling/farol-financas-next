@@ -1307,8 +1307,240 @@ function renderApp() {
 // ============================================================
 // 1. ABA: VISÃO GERAL
 // ============================================================
+let insightsPageIdx = 0;
+
+function computeVisaoGeralInvoiceSummary(m) {
+  const ym = state.selectedMonth || getTodayISO().slice(0, 7);
+  const [selY, selM] = ym.split('-').map(Number);
+  const maxDayInMonth = new Date(selY || 2026, selM || 11, 0).getDate();
+  const todayISO = getTodayISO();
+  const [tY, tM, tD] = todayISO.split('-').map(Number);
+  const todayMidday = new Date(tY || 2026, (tM || 11) - 1, tD || 1, 12, 0, 0);
+
+  let totalFaturasOpenCents = 0;
+  let totalFaturasPaidCents = 0;
+  let pendingInvoicesDeltaCents = 0;
+  let totalLimitCents = 0;
+  let totalUsedLimitCents = 0;
+
+  const allAccounts = Array.isArray(state.accounts) ? state.accounts : [];
+  const cardAccounts = allAccounts.filter(
+    a => a && (a.type === 'Cartão de Crédito' || a.type === 'Conta + Cartão' || Number(a.limitCents) > 0)
+  );
+  const effectiveCards = cardAccounts.length > 0 ? cardAccounts : allAccounts;
+
+  let primaryCard = effectiveCards[0] || null;
+  let primaryOpenCents = -1;
+  let hasAnyUnpaid = false;
+
+  allAccounts.forEach(acc => {
+    if (!acc) return;
+    const meta = getInvoiceMeta(acc.id, ym);
+    const invTxs = state.transactions.filter(t => {
+      if (t.accountId !== acc.id || t.type !== 'expense') return false;
+      if (t.method !== 'Cartão de Crédito' && acc.type !== 'Cartão de Crédito') return false;
+      return getInvoiceMonthForTransaction(t, acc) === ym;
+    });
+    const txSum = invTxs.reduce((s, t) => s + (Number(t.amountCents) || 0), 0);
+    const adjCents = Number(meta.adjustmentCents) || 0;
+    const invTotal = Math.max(0, txSum + adjCents);
+
+    const futureCents = state.transactions
+      .filter(t => {
+        if (t.accountId !== acc.id || t.type !== 'expense') return false;
+        if (t.method !== 'Cartão de Crédito' && acc.type !== 'Cartão de Crédito') return false;
+        return getInvoiceMonthForTransaction(t, acc) > ym;
+      })
+      .reduce((s, t) => s + (Number(t.amountCents) || 0), 0);
+
+    const isCardCapable = acc.type === 'Cartão de Crédito' || acc.type === 'Conta + Cartão' || Number(acc.limitCents) > 0;
+    if (isCardCapable) {
+      totalLimitCents += Math.max(0, Number(acc.limitCents) || 0);
+      totalUsedLimitCents += (meta.status === 'paid' ? 0 : invTotal) + futureCents;
+    }
+
+    if (meta.status === 'paid') {
+      totalFaturasPaidCents += invTotal;
+    } else {
+      hasAnyUnpaid = true;
+      totalFaturasOpenCents += invTotal;
+      // Parcelas/compras de meses anteriores que caíram nesta fatura ainda não estão em m.expenseCents
+      const carryoverTxCents = invTxs
+        .filter(t => !(t.date || '').startsWith(ym))
+        .reduce((s, t) => s + (Number(t.amountCents) || 0), 0);
+      pendingInvoicesDeltaCents += carryoverTxCents + Math.max(0, adjCents);
+
+      if (isCardCapable && invTotal > primaryOpenCents) {
+        primaryOpenCents = invTotal;
+        primaryCard = acc;
+      }
+    }
+  });
+
+  // Recorrências ativas de saída ainda não lançadas no mês selecionado
+  const pendingRecOutCents = (Array.isArray(state.recurrences) ? state.recurrences : [])
+    .filter(r => r && r.active && r.type !== 'income')
+    .filter(r => !state.transactions.some(t => t.recurrenceId === r.id && (t.date || '').startsWith(ym)))
+    .reduce((s, r) => s + Math.max(0, Number(r.amountCents) || 0), 0);
+
+  let dueBadgeText = 'Sem cartão';
+  let dueBadgeTone = 'is-neutral';
+  if (primaryCard) {
+    const clampedDueDay = Math.min(maxDayInMonth, Math.max(1, Number(primaryCard.dueDay) || 12));
+    const dueDateStr = `${String(clampedDueDay).padStart(2, '0')}/${String(selM || 11).padStart(2, '0')}`;
+    const dueMidday = new Date(selY || 2026, (selM || 11) - 1, clampedDueDay, 12, 0, 0);
+    const diffDays = Math.round((dueMidday.getTime() - todayMidday.getTime()) / 86400000);
+
+    if (!hasAnyUnpaid && totalFaturasPaidCents > 0) {
+      dueBadgeText = `Paga · ${dueDateStr}`;
+      dueBadgeTone = 'is-paid';
+    } else if (diffDays < 0) {
+      dueBadgeText = `Venceu há ${Math.abs(diffDays)}d · ${dueDateStr}`;
+      dueBadgeTone = totalFaturasOpenCents > 0 ? 'is-danger' : 'is-neutral';
+    } else if (diffDays === 0) {
+      dueBadgeText = `Vence hoje · ${dueDateStr}`;
+      dueBadgeTone = totalFaturasOpenCents > 0 ? 'is-danger' : 'is-warning';
+    } else if (diffDays === 1) {
+      dueBadgeText = `Vence amanhã · ${dueDateStr}`;
+      dueBadgeTone = 'is-warning';
+    } else {
+      dueBadgeText = `Vence em ${diffDays} dias · ${dueDateStr}`;
+      dueBadgeTone = diffDays <= 5 && totalFaturasOpenCents > 0 ? 'is-warning' : 'is-neutral';
+    }
+  }
+
+  const limitUsedPct = totalLimitCents > 0
+    ? Math.min(100, Math.round((totalUsedLimitCents / totalLimitCents) * 100))
+    : 0;
+  const limitBarColor = limitUsedPct > 90
+    ? 'var(--coral-red)'
+    : limitUsedPct > 70
+      ? 'var(--amber-gold)'
+      : 'var(--azure-primary)';
+
+  const cashExpensesCents = m.txs
+    .filter(t => t.type === 'expense' && t.method !== 'Cartão de Crédito')
+    .reduce((s, t) => s + (Number(t.amountCents) || 0), 0);
+  const saldoAposPagamentoCents = m.incomeCents - cashExpensesCents - totalFaturasOpenCents - totalFaturasPaidCents;
+  const projectedCloseCents = m.partialResultCents - pendingInvoicesDeltaCents - pendingRecOutCents;
+
+  return {
+    totalFaturasOpenCents,
+    totalFaturasPaidCents,
+    pendingInvoicesDeltaCents,
+    pendingRecOutCents,
+    totalLimitCents,
+    totalUsedLimitCents,
+    limitUsedPct,
+    limitBarColor,
+    cardCount: cardAccounts.length,
+    primaryCard,
+    dueBadgeText,
+    dueBadgeTone,
+    saldoAposPagamentoCents,
+    projectedCloseCents
+  };
+}
+
+function buildMonthlyInsightsList(m) {
+  const list = [];
+  const topCat = m.distribution[0];
+
+  // Bloco 1: Alerta de categoria principal (âmbar)
+  if (topCat) {
+    list.push({
+      tone: 'amber',
+      icon: '!',
+      title: `${esc(topCat.name)} concentra ${topCat.pct}% dos gastos`,
+      desc: `Total de ${fmtBRL(topCat.totalCents)} registrado em ${esc(topCat.name)} neste período. Acompanhe o limite diário para equilibrar o mês.`
+    });
+  } else {
+    list.push({
+      tone: 'amber',
+      icon: '!',
+      title: 'Seus gastos estão sob controle',
+      desc: 'Adicione suas receitas e despesas para receber leituras automáticas do seu comportamento financeiro.'
+    });
+  }
+
+  // Bloco 2: Ritmo diário seguro (orçamento mensal - gasto atual) / dias restantes
+  const remainingBudgetCents = m.budgetCents - m.expenseCents;
+  if (m.budgetCents <= 0) {
+    list.push({
+      tone: 'info',
+      icon: 'i',
+      title: 'Defina um orçamento mensal',
+      desc: `Configure seu teto no perfil para calcular o ritmo diário seguro nos próximos ${m.daysRem} ${m.daysRem === 1 ? 'dia' : 'dias'}.`
+    });
+  } else if (remainingBudgetCents < 0) {
+    const overAbs = Math.abs(remainingBudgetCents);
+    list.push({
+      tone: 'danger',
+      icon: '!',
+      title: `Orçamento estourado em ${fmtBRL(overAbs)}`,
+      desc: m.daysRem > 0
+        ? `Você passou dos ${fmtBRL(m.budgetCents)} previstos com ${m.daysRem} ${m.daysRem === 1 ? 'dia restante' : 'dias restantes'} no mês.`
+        : `Você ultrapassou o orçamento mensal de ${fmtBRL(m.budgetCents)} neste período.`
+    });
+  } else if (m.daysRem <= 0) {
+    list.push({
+      tone: 'success',
+      icon: '✓',
+      title: `Orçamento livre: ${fmtBRL(remainingBudgetCents)}`,
+      desc: `Período encerrado dentro do orçamento mensal de ${fmtBRL(m.budgetCents)}.`
+    });
+  } else {
+    const safeDailyCents = Math.floor(remainingBudgetCents / m.daysRem);
+    list.push({
+      tone: 'success',
+      icon: '✓',
+      title: `Orçamento livre: ${fmtBRL(safeDailyCents)}/dia`,
+      desc: `Para fechar dentro dos ${fmtBRL(m.budgetCents)} nos próximos ${m.daysRem} ${m.daysRem === 1 ? 'dia' : 'dias'}.`
+    });
+  }
+
+  // Insights extras (ativam paginação discreta < 1/2 > no header quando > 2)
+  const fixedRecOutCents = (Array.isArray(state.recurrences) ? state.recurrences : [])
+    .filter(r => r && r.active && r.type !== 'income')
+    .reduce((s, r) => s + Math.max(0, Number(r.amountCents) || 0), 0);
+  if (fixedRecOutCents > 0) {
+    const fixedPct = m.incomeCents > 0 ? Math.round((fixedRecOutCents / m.incomeCents) * 100) : null;
+    list.push({
+      tone: 'info',
+      icon: '↻',
+      title: `Custo fixo ativo: ${fmtBRL(fixedRecOutCents)}/mês`,
+      desc: fixedPct !== null
+        ? `Compromete ${fixedPct}% das suas entradas registradas no mês.`
+        : 'Total automático das despesas recorrentes ativas neste período.'
+    });
+  }
+
+  if (m.reserveGoalCents > 0 && m.reservePct < 100) {
+    const missingReserve = Math.max(0, m.reserveGoalCents - m.reserveCurrentCents);
+    list.push({
+      tone: 'info',
+      icon: '◎',
+      title: `Reserva em ${m.reservePct}% da meta`,
+      desc: `Faltam ${fmtBRL(missingReserve)} para completar sua meta de proteção de ${fmtBRL(m.reserveGoalCents)}.`
+    });
+  } else if (m.prevPartialResultCents !== 0) {
+    const diffPrev = m.partialResultCents - m.prevPartialResultCents;
+    list.push({
+      tone: diffPrev >= 0 ? 'success' : 'amber',
+      icon: diffPrev >= 0 ? '↗' : '↘',
+      title: diffPrev >= 0
+        ? `Saldo ${fmtBRL(diffPrev)} acima do mês anterior`
+        : `Saldo ${fmtBRL(Math.abs(diffPrev))} abaixo do mês anterior`,
+      desc: `Resultado atual de ${fmtBRL(m.partialResultCents)} frente a ${fmtBRL(m.prevPartialResultCents)} no período anterior.`
+    });
+  }
+
+  return list;
+}
+
 function renderVisaoGeral() {
   const m = computeMonthMetrics();
+  const invSummary = computeVisaoGeralInvoiceSummary(m);
   const lineChartSvg = buildMonthlySpendSvg(m.expenseCents, m.txs, m.daysInMonth);
   const donutSvg = buildDonutSvg(m.distribution, m.expenseCents);
 
@@ -1377,13 +1609,52 @@ function renderVisaoGeral() {
     accumulatedTitle = `Média diária até o dia ${m.elapsedDays}`;
   }
 
-  const topCat = m.distribution[0];
-  const insightTitle = topCat
-    ? `${esc(topCat.name)} concentra ${topCat.pct}% dos gastos`
-    : 'Seus gastos estão sob controle';
-  const insightDesc = topCat
-    ? `Total de ${fmtBRL(topCat.totalCents)} registrado em ${esc(topCat.name)} neste período. Acompanhe o limite diário para equilibrar o mês.`
-    : 'Adicione suas receitas e despesas para receber leituras automáticas do seu comportamento financeiro.';
+  const insightsList = buildMonthlyInsightsList(m);
+  const insightsPerPage = 2;
+  const insightsTotalPages = Math.max(1, Math.ceil(insightsList.length / insightsPerPage));
+  const activeInsightsPage = ((insightsPageIdx % insightsTotalPages) + insightsTotalPages) % insightsTotalPages;
+  insightsPageIdx = activeInsightsPage;
+  const visibleInsights = insightsList.slice(
+    activeInsightsPage * insightsPerPage,
+    activeInsightsPage * insightsPerPage + insightsPerPage
+  );
+  const insightsHtml = visibleInsights.map(item => {
+    const toneCls = item.tone === 'amber' ? '' : ` is-${item.tone}`;
+    return `
+      <div class="insight-alert-box${toneCls}">
+        <div class="insight-icon${toneCls}" aria-hidden="true">${item.icon}</div>
+        <div class="insight-content">
+          <div class="insight-title sensitive-val">${item.title}</div>
+          <div class="insight-desc sensitive-val">${item.desc}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Taxa de economia + barra proporcional entradas/saídas para Resultado parcial
+  let savingsPillText = 'Sem entradas';
+  let savingsPillTone = 'is-neutral';
+  if (m.incomeCents > 0) {
+    const rate = Math.round((m.partialResultCents / m.incomeCents) * 100);
+    if (m.partialResultCents > 0) {
+      savingsPillText = `+${rate}% economizado`;
+      savingsPillTone = 'is-positive';
+    } else if (m.partialResultCents === 0) {
+      savingsPillText = '0% economizado';
+      savingsPillTone = 'is-neutral';
+    } else {
+      savingsPillText = `${rate}% déficit`;
+      savingsPillTone = 'is-negative';
+    }
+  }
+  const totalFlowCents = Math.max(0, m.incomeCents) + Math.max(0, m.expenseCents);
+  const incomeSharePct = totalFlowCents > 0 ? Math.round((Math.max(0, m.incomeCents) / totalFlowCents) * 100) : 0;
+  const expenseSharePct = totalFlowCents > 0 ? (100 - incomeSharePct) : 0;
+  const projClass = invSummary.projectedCloseCents > 0
+    ? 'positive'
+    : invSummary.projectedCloseCents < 0
+      ? 'negative'
+      : '';
 
   return `
     <section class="dashboard-row-1">
@@ -1453,24 +1724,42 @@ function renderVisaoGeral() {
     </section>
 
     <section class="dashboard-row-2">
-      <div class="card">
-        <div class="card-title">Resultado parcial</div>
-        <div class="partial-value ${m.partialResultCents < 0 ? 'negative' : 'positive'} sensitive-val">
-          ${fmtBRL(m.partialResultCents)}
+      <article class="card card-partial-enriched">
+        <div>
+          <div class="partial-top-row">
+            <span class="card-title">Resultado parcial</span>
+            <span class="savings-pill ${savingsPillTone} sensitive-val">${savingsPillText}</span>
+          </div>
+          <div class="partial-value ${m.partialResultCents < 0 ? 'negative' : 'positive'} sensitive-val">
+            ${fmtBRL(m.partialResultCents)}
+          </div>
+          <div class="vs-prev sensitive-val">vs ${fmtBRL(m.prevPartialResultCents)} mês anterior</div>
         </div>
-        <div class="vs-prev sensitive-val">vs ${fmtBRL(m.prevPartialResultCents)} mês anterior</div>
 
-        <div class="in-out-grid">
-          <div class="in-out-item">
-            <span class="in-out-label">↗ Entradas</span>
-            <span class="in-out-val sensitive-val">${fmtBRL(m.incomeCents)}</span>
+        <div class="partial-footer-split">
+          <div class="in-out-grid">
+            <div class="in-out-item">
+              <span class="in-out-label">↗ Entradas</span>
+              <span class="in-out-val sensitive-val">${fmtBRL(m.incomeCents)}</span>
+            </div>
+            <div class="in-out-item">
+              <span class="in-out-label">↘ Saídas</span>
+              <span class="in-out-val sensitive-val">${fmtBRL(m.expenseCents)}</span>
+            </div>
           </div>
-          <div class="in-out-item">
-            <span class="in-out-label">↘ Saídas</span>
-            <span class="in-out-val sensitive-val">${fmtBRL(m.expenseCents)}</span>
+
+          <div class="partial-projection-box">
+            <span class="in-out-label">Projeção do mês</span>
+            <span class="partial-proj-val ${projClass} sensitive-val">${fmtBRL(invSummary.projectedCloseCents)}</span>
+            <div class="flow-split-bar" role="img" aria-label="${totalFlowCents > 0 ? `Proporção do fluxo: ${incomeSharePct}% entradas e ${expenseSharePct}% saídas` : 'Sem movimentações no período'}">
+              ${totalFlowCents > 0 ? `
+                <span class="flow-split-seg is-in" style="width:${incomeSharePct}%;"></span>
+                <span class="flow-split-seg is-out" style="width:${expenseSharePct}%;"></span>
+              ` : ''}
+            </div>
           </div>
         </div>
-      </div>
+      </article>
 
       <div class="card">
         <div class="card-header-row" style="margin-bottom:6px;">
@@ -1544,28 +1833,34 @@ function renderVisaoGeral() {
         </div>
       </div>
 
-      <div class="card">
-        <div class="card-header-row" style="margin-bottom:8px;">
+      <article class="card card-insights-enriched">
+        <div class="card-header-row" style="margin-bottom:6px;">
           <span class="card-title">Insights do mês</span>
-          <span class="badge-pill-dark" style="font-weight:500;">leitura automática</span>
-        </div>
-
-        <div class="insight-alert-box">
-          <div class="insight-icon">!</div>
-          <div>
-            <div class="insight-title">${insightTitle}</div>
-            <div class="insight-desc sensitive-val">${insightDesc}</div>
+          <div class="insights-header-right">
+            ${insightsTotalPages > 1 ? `
+              <div class="insights-pager" role="group" aria-label="Paginação de insights">
+                <button type="button" class="insights-pager-btn" data-insights-nav="prev" aria-label="Insights anteriores">‹</button>
+                <span class="insights-pager-count">${activeInsightsPage + 1}/${insightsTotalPages}</span>
+                <button type="button" class="insights-pager-btn" data-insights-nav="next" aria-label="Próximos insights">›</button>
+              </div>
+            ` : ''}
+            <span class="badge-pill-dark" style="font-weight:500;">leitura automática</span>
           </div>
         </div>
-      </div>
+
+        <div class="insights-stack">
+          ${insightsHtml}
+        </div>
+      </article>
     </section>
 
     <!-- ROW 4: Próximas recorrências + Faturas + Metas -->
-    ${renderVisaoGeralRow4(m)}
+    ${renderVisaoGeralRow4(m, invSummary)}
   `;
 }
 
-function renderVisaoGeralRow4(m) {
+function renderVisaoGeralRow4(m, invSummaryArg = null) {
+  const invSummary = invSummaryArg || computeVisaoGeralInvoiceSummary(m);
   const [, selMonth] = state.selectedMonth.split('-');
   const nextRecs = state.recurrences.slice(0, 3);
   const recRows = nextRecs.length === 0
@@ -1581,88 +1876,128 @@ function renderVisaoGeralRow4(m) {
             </span>
             <span>
               <b class="sensitive-val">${fmtBRL(r.amountCents)}</b>
-              <span style="color:var(--text-muted); font-size:11.5px; margin-left:6px;">${dayStr}/${selMonth}</span>
+              <span class="tabular-nums" style="color:var(--text-muted); font-size:11.5px; margin-left:6px;">${dayStr}/${selMonth}</span>
             </span>
           </div>
         `;
       }).join('');
 
-  // Total de faturas em aberto no mês (respeitando fechamento e filtrando apenas compras no cartão)
-  let totalFaturasOpenCents = 0;
-  let totalFaturasPaidCents = 0;
-  state.accounts.forEach(acc => {
-    const meta = getInvoiceMeta(acc.id);
-    const txSum = state.transactions
-      .filter(t => {
-        if (t.accountId !== acc.id || t.type !== 'expense') return false;
-        if (t.method !== 'Cartão de Crédito' && acc.type !== 'Cartão de Crédito') return false;
-        return getInvoiceMonthForTransaction(t, acc) === state.selectedMonth;
-      })
-      .reduce((s, t) => s + (Number(t.amountCents) || 0), 0);
-    const invTotal = Math.max(0, txSum + (Number(meta.adjustmentCents) || 0));
-    if (meta.status === 'paid') {
-      totalFaturasPaidCents += invTotal;
-    } else {
-      totalFaturasOpenCents += invTotal;
-    }
-  });
-  const cashExpensesCents = m.txs
-    .filter(t => t.type === 'expense' && t.method !== 'Cartão de Crédito')
-    .reduce((s, t) => s + (Number(t.amountCents) || 0), 0);
-  const saldoAposPagamentoCents = m.incomeCents - cashExpensesCents - totalFaturasOpenCents - totalFaturasPaidCents;
-
-  // Meta prioritária em destaque
+  // Meta prioritária em destaque com Aporte mensal sugerido à direita
   const topGoal = state.goals[1] || state.goals[0];
   const goalHtml = !topGoal
     ? `<div class="vs-prev">Crie uma meta na aba Metas.</div>`
     : (() => {
-        const pct = topGoal.targetCents > 0 ? Math.min(100, Math.round((topGoal.currentCents / topGoal.targetCents) * 100)) : 0;
+        const targetCents = Math.max(0, Number(topGoal.targetCents) || 0);
+        const currentCents = Math.max(0, Number(topGoal.currentCents) || 0);
+        const remainingCents = Math.max(0, targetCents - currentCents);
+        const pct = targetCents > 0 ? Math.min(100, Math.round((currentCents / targetCents) * 100)) : 0;
+        const deadlineStr = typeof topGoal.deadline === 'string' && /^\d{4}-\d{2}$/.test(topGoal.deadline)
+          ? topGoal.deadline
+          : '';
+
+        let aporteValText = 'Defina prazo';
+        let aporteSubText = 'para calcular o aporte';
+        if (targetCents > 0 && remainingCents === 0) {
+          aporteValText = 'Meta atingida';
+          aporteSubText = '100% concluída';
+        } else if (deadlineStr) {
+          const [refY, refM] = (state.selectedMonth || getTodayISO().slice(0, 7)).split('-').map(Number);
+          const [dlY, dlM] = deadlineStr.split('-').map(Number);
+          const monthsLeft = (dlY - (refY || 2026)) * 12 + (dlM - (refM || 11));
+          if (monthsLeft <= 0) {
+            aporteValText = fmtBRL(remainingCents);
+            aporteSubText = 'prazo já atingido';
+          } else {
+            const suggestedMonthlyCents = Math.ceil(remainingCents / monthsLeft);
+            aporteValText = `${fmtBRL(suggestedMonthlyCents)}/mês`;
+            aporteSubText = 'para cumprir o prazo';
+          }
+        }
+
         return `
           <div class="goal-highlight-box">
-            <span class="goal-priority-pill">Prioridade</span>
-            <div class="goal-spotlight-title" style="font-size:16px; font-weight:700; color:#fff;">${esc(topGoal.title)}</div>
-            <div style="font-size:11.5px; color:#c8e4f7;">Previsão de conclusão · ${esc(topGoal.deadline || '2027-12')}</div>
-          </div>
-          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:12px;">
-            <span class="sensitive-val" style="font-size:12px; font-weight:600;">${fmtBRL(topGoal.currentCents)}</span>
-            <div class="cat-progress-track" style="flex:1;">
-              <div class="cat-progress-fill" style="width:${Math.max(4, pct)}%; background:var(--cyan-accent);"></div>
+            <div class="goal-highlight-left">
+              <span class="goal-priority-pill">Prioridade</span>
+              <div class="goal-spotlight-title" style="font-size:15.5px; font-weight:700; color:#fff;">${esc(topGoal.title)}</div>
+              <div class="tabular-nums" style="font-size:11.5px; color:#c8e4f7;">
+                ${deadlineStr ? `Previsão · ${esc(deadlineStr)}` : 'Sem prazo definido'}
+              </div>
             </div>
-            <span class="sensitive-val" style="font-size:12px; font-weight:600;">${fmtBRL(topGoal.targetCents)}</span>
+            <div class="goal-highlight-right">
+              <span class="goal-aporte-label">Aporte mensal sugerido</span>
+              <span class="goal-aporte-val sensitive-val">${aporteValText}</span>
+              <span class="goal-aporte-sub">${aporteSubText}</span>
+            </div>
+          </div>
+          <div class="goal-progress-footer">
+            <span class="goal-progress-val sensitive-val">${fmtBRL(currentCents)} <span class="goal-progress-pct">(${pct}%)</span></span>
+            <progress class="farol-progress goal-progress-bar" max="100" value="${pct}" aria-label="Progresso da meta ${esc(topGoal.title)}: ${pct}%"></progress>
+            <span class="goal-progress-val sensitive-val">${fmtBRL(targetCents)}</span>
           </div>
         `;
       })();
 
+  const extraCardsCount = Math.max(0, invSummary.cardCount - 1);
+  const limitHeaderLeft = invSummary.totalLimitCents > 0
+    ? `Limite utilizado · <strong>${invSummary.limitUsedPct}%</strong>`
+    : `Limite utilizado · <strong>Sem limite</strong>`;
+  const limitHeaderRight = invSummary.totalLimitCents > 0
+    ? `${fmtBRL(invSummary.totalUsedLimitCents)} / ${fmtBRL(invSummary.totalLimitCents)}`
+    : 'Defina na aba Faturas';
+
   return `
     <section class="dashboard-row-4">
-      <div class="card">
+      <article class="card">
         <div class="card-header-row" style="margin-bottom:8px;">
           <span class="card-title">Próximas recorrências</span>
           <button class="card-link" data-jump-tab="recorrencias">Ver todas</button>
         </div>
         ${recRows}
-      </div>
+      </article>
 
-      <div class="card">
-        <div class="card-header-row" style="margin-bottom:8px;">
-          <span class="card-title" style="display:inline-flex; align-items:center; gap:6px;">
-            Faturas <span class="badge-pill-dark" style="padding:2px 7px; color:var(--amber-gold);">!</span>
-          </span>
-          <button class="card-link" data-jump-tab="faturas">Abrir faturas</button>
-        </div>
-        <div class="big-currency sensitive-val" style="margin-top:10px;">${fmtBRL(totalFaturasOpenCents)}</div>
-        <div class="vs-prev sensitive-val" style="margin-top:8px;">
-          Saldo após pagamento <b style="color:var(--text-main);">${fmtBRL(saldoAposPagamentoCents)}</b>
-        </div>
-      </div>
+      <article class="card card-faturas-enriched">
+        <div>
+          <div class="card-header-row" style="margin-bottom:6px;">
+            <span class="card-title">Faturas</span>
+            <button class="card-link" data-jump-tab="faturas">Abrir faturas</button>
+          </div>
+          <div class="fatura-main-row">
+            <div class="big-currency sensitive-val">${fmtBRL(invSummary.totalFaturasOpenCents)}</div>
+            <span class="fatura-due-pill ${invSummary.dueBadgeTone}">${invSummary.dueBadgeText}</span>
+          </div>
+          <div class="vs-prev sensitive-val" style="margin-top:6px;">
+            Saldo após pagamento <b style="color:var(--text-main);">${fmtBRL(invSummary.saldoAposPagamentoCents)}</b>
+          </div>
 
-      <div class="card">
+          <div class="fatura-limit-block">
+            <div class="fatura-limit-head">
+              <span>${limitHeaderLeft}</span>
+              <span class="fatura-limit-ratio sensitive-val">${limitHeaderRight}</span>
+            </div>
+            <progress
+              class="farol-progress"
+              max="100"
+              value="${invSummary.limitUsedPct}"
+              style="--progress-bar-fill:${invSummary.limitBarColor};"
+              aria-label="Limite utilizado: ${invSummary.limitUsedPct}%"
+            ></progress>
+          </div>
+        </div>
+
+        ${extraCardsCount > 0 && invSummary.primaryCard ? `
+          <div class="fatura-cards-footer">
+            Cartão principal: <b style="color:var(--text-secondary);">${esc(invSummary.primaryCard.name)}</b> · +${extraCardsCount} ${extraCardsCount === 1 ? 'cartão' : 'cartões'}
+          </div>
+        ` : ''}
+      </article>
+
+      <article class="card card-metas-enriched">
         <div class="card-header-row" style="margin-bottom:4px;">
           <span class="card-title">Metas</span>
           <button class="card-link" data-jump-tab="metas">Gerenciar</button>
         </div>
         ${goalHtml}
-      </div>
+      </article>
     </section>
   `;
 }
@@ -1688,6 +2023,13 @@ function bindVisaoGeralEvents() {
     btn.addEventListener('click', () => {
       state.accumulatedSubTab = btn.dataset.accTab;
       saveState();
+      renderApp();
+    });
+  });
+
+  document.querySelectorAll('[data-insights-nav]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      insightsPageIdx += btn.dataset.insightsNav === 'prev' ? -1 : 1;
       renderApp();
     });
   });

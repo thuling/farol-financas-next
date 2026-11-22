@@ -396,4 +396,74 @@ function read(rel) {
     assert.ok(sanitizeSrc.includes('sanitizeAllWorkspacesOnce'), 'state-sanitize.ts must export batch healer');
     console.log('PASS [Feature 7] Installment deduplication, account healing, invoice closing alignment, and recurrence safety verified');
   }
+
+  // 8. Enriched Visão Geral Cards (Resultado Parcial, Faturas, Insights, Metas) & Zero/Empty Fallbacks
+  {
+    const vg = sec.getCleanEmptyState('Dashboard Rico');
+    vg.selectedMonth = '2026-11';
+    vg.profile.monthlyBudgetCents = 200000; // R$ 2.000,00
+    vg.profile.emergencyGoalCents = 1000000;
+    vg.accounts = [
+      { id: 'acc-nu', name: 'Nubank', type: 'Conta + Cartão', initialBalanceCents: 300000, limitCents: 100000, closingDay: 5, dueDay: 10 },
+      { id: 'acc-xp', name: 'XP Visa', type: 'Cartão de Crédito', initialBalanceCents: 0, limitCents: 100000, closingDay: 15, dueDay: 22 },
+    ];
+    vg.recurrences = [
+      { id: 'rec-net', description: 'Internet', amountCents: 10000, type: 'expense', categoryId: 'cat-moradia', accountId: 'acc-nu', day: 20, active: true },
+    ];
+    vg.transactions = [
+      { id: 'tx-sal', type: 'income', amountCents: 500000, description: 'Salário', tag: '', categoryId: 'cat-receita', accountId: 'acc-nu', date: '2026-11-05', method: 'Conta Corrente / Pix' },
+      { id: 'tx-food', type: 'expense', amountCents: 160000, description: 'Mercado', tag: '', categoryId: 'cat-mercado', accountId: 'acc-nu', date: '2026-11-04', method: 'Cartão de Crédito' },
+    ];
+    vg.goals = [
+      { id: 'g-1', title: 'Viagem Europa', currentCents: 60000, targetCents: 300000, deadline: '2027-11', color: '#38b6ff' },
+    ];
+    sec.setState(vg);
+
+    const htmlPop = sec.renderVisaoGeral();
+    assert.ok(!htmlPop.includes('NaN') && !htmlPop.includes('Infinity'), 'Populated Visão Geral must never render NaN or Infinity');
+    // Card 1: Resultado parcial (+68% economizado, Projeção do mês, flow split bar)
+    assert.ok(htmlPop.includes('+68% economizado'), 'Must render positive savings rate pill');
+    assert.ok(htmlPop.includes('Projeção do mês'), 'Must render monthly projection label');
+    assert.ok(htmlPop.includes('flow-split-bar'), 'Must render income/expense proportion bar');
+    // Card 2: Faturas (due badge, 80% amber limit bar, +1 cartão footer)
+    assert.ok(htmlPop.includes('10/11'), 'Must render primary card due date badge');
+    assert.ok(htmlPop.includes('Limite utilizado · <strong>80%</strong>'), 'Must calculate 80% limit utilization across both cards');
+    assert.ok(htmlPop.includes('--progress-bar-fill:var(--amber-gold)'), '70%-90% limit must use amber progress bar');
+    assert.ok(htmlPop.includes('Cartão principal:') && htmlPop.includes('+1 cartão'), 'Must display primary card + extra cards count');
+    // Card 3: Insights (max 2 blocks rendered, pagination 1/2 for > 2 insights, safe daily budget)
+    assert.equal((htmlPop.match(/class="insight-alert-box/g) || []).length, 2, 'Must show at most 2 insight blocks at once');
+    assert.ok(htmlPop.includes('1/2'), 'Must show < 1/2 > pagination when > 2 insights exist');
+    assert.ok(htmlPop.includes('Orçamento livre:'), 'Must show safe daily budget insight');
+    // Card 4: Metas (Aporte mensal sugerido = (3000-600)/12 = R$ 200,00/mês + progress percentage)
+    assert.ok(htmlPop.includes('Aporte mensal sugerido'), 'Must render suggested monthly contribution');
+    assert.ok(htmlPop.includes('200,00/mês'), 'Must compute exact monthly goal contribution');
+    assert.ok(htmlPop.includes('(20%)'), 'Must display goal completion percentage next to current value');
+
+    // Edge cases: zero income, zero limit, over-budget, goal without deadline / past deadline
+    const emptyVg = sec.getCleanEmptyState('Vazio');
+    emptyVg.selectedMonth = '2026-11';
+    emptyVg.profile.monthlyBudgetCents = 10000;
+    emptyVg.profile.emergencyGoalCents = 0;
+    emptyVg.accounts = [
+      { id: 'acc-nolim', name: 'Carteira', type: 'Conta Corrente', initialBalanceCents: 0, limitCents: 0, closingDay: 5, dueDay: 12 },
+    ];
+    emptyVg.transactions = [
+      { id: 'tx-over', type: 'expense', amountCents: 25000, description: 'Extra', tag: '', categoryId: 'cat-compras', accountId: 'acc-nolim', date: '2026-11-10', method: 'Conta Corrente / Pix' },
+    ];
+    emptyVg.recurrences = [];
+    emptyVg.goals = [
+      { id: 'g-past', title: 'Meta Hoje', currentCents: 0, targetCents: 100000, deadline: '2026-11', color: '#38b6ff' },
+    ];
+    sec.setState(emptyVg);
+
+    const htmlEdge = sec.renderVisaoGeral();
+    assert.ok(!htmlEdge.includes('NaN') && !htmlEdge.includes('Infinity'), 'Edge-case Visão Geral must never render NaN or Infinity');
+    assert.ok(htmlEdge.includes('Sem entradas'), 'Zero income must render Sem entradas pill');
+    assert.ok(htmlEdge.includes('Sem limite'), 'Zero limit must render clean fallback');
+    assert.ok(htmlEdge.includes('Orçamento estourado'), 'Negative remaining budget must render over-budget warning');
+    assert.ok(!htmlEdge.includes('insights-pager'), 'Pagination must hide when <= 2 insights exist');
+    assert.ok(htmlEdge.includes('prazo já atingido'), 'Zero months left must avoid division by zero');
+    assert.ok(htmlEdge.includes('(0%)'), 'Zero goal progress must render (0%) cleanly');
+    console.log('PASS [Feature 8] Enriched Visão Geral 4 cards, tabular-nums, dynamic limit colors, insights pager, and zero-state fallbacks verified');
+  }
 }
