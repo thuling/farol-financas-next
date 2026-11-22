@@ -350,8 +350,23 @@ function migrateLegacyV1(v1) {
 let usersIndex = getUsersIndex();
 let state = loadState();
 
-// Estado efêmero de UI (filtros, seleção em lote, desfazer)
-let txFilter = { period: 'month', search: '', categoryId: '', accountId: '', tag: '' };
+// Estado efêmero de UI (filtros, ordenação, seleção em lote, desfazer)
+let txFilter = {
+  period: 'month',
+  dateFrom: '',
+  dateTo: '',
+  search: '',
+  categoryId: '',
+  accountId: '',
+  type: '',
+  method: '',
+  tag: '',
+  sortBy: 'date',
+  sortDir: 'descending'
+};
+const txCollator = typeof Intl !== 'undefined' && typeof Intl.Collator === 'function'
+  ? new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' })
+  : { compare: (a, b) => String(a).localeCompare(String(b)) };
 let selectedTxIds = new Set();
 let undoSnapshot = null;
 let undoTimer = null;
@@ -550,7 +565,8 @@ function isInternalTransferTx(t) {
     t.isInvoicePayment ||
     t.isAssetTransfer ||
     t.method === 'Pagamento de Fatura' ||
-    t.method === 'Aporte / Investimento'
+    t.method === 'Aporte / Investimento' ||
+    t.method === 'Resgate / Investimento'
   );
 }
 
@@ -1432,31 +1448,71 @@ function buildAccumulatedAreaSvg(expenseCents, mode, partialResultCents = 0, txs
 // ============================================================
 // 2. ABA: TRANSAÇÕES (FILTROS COMBINÁVEIS + EDIÇÃO EM LOTE + DESFAZER)
 // ============================================================
+function getTxSortValue(t, key) {
+  switch (key) {
+    case 'date':
+      return Number(String(t.date || '').replace(/\D/g, '').slice(0, 8)) || 0;
+    case 'description':
+      return `${t.description || ''} ${t.tag || ''}`.trim();
+    case 'category':
+      return getCategoryById(t.categoryId).name || '';
+    case 'account':
+      return `${getAccountById(t.accountId).name || ''} ${t.method || 'Pix'}`.trim();
+    case 'type':
+      return t.type === 'income' ? 'Entrada' : 'Saída';
+    case 'amount': {
+      const c = Number(t.amountCents) || 0;
+      return t.type === 'expense' ? -c : c;
+    }
+    default:
+      return Number(String(t.date || '').replace(/\D/g, '').slice(0, 8)) || 0;
+  }
+}
+
 function getFilteredTransactions() {
   const today = getTodayISO();
   const nowDate = new Date();
+  const hasCustomDateRange = Boolean(txFilter.dateFrom || txFilter.dateTo);
 
-  return state.transactions
-    .filter(t => {
-      if (txFilter.period === 'month' && !(t.date || '').startsWith(state.selectedMonth)) return false;
-      if (txFilter.period === 'today' && t.date !== today) return false;
-      if (txFilter.period === '7d' || txFilter.period === '30d') {
-        const days = txFilter.period === '7d' ? 7 : 30;
-        const tDate = new Date(t.date + 'T12:00:00');
-        const diff = (nowDate - tDate) / (1000 * 60 * 60 * 24);
-        if (diff > days || diff < -365) return false;
-      }
-      if (txFilter.categoryId && t.categoryId !== txFilter.categoryId) return false;
-      if (txFilter.accountId && t.accountId !== txFilter.accountId) return false;
-      if (txFilter.tag && (t.tag || '').toLowerCase() !== txFilter.tag.toLowerCase()) return false;
-      if (txFilter.search) {
-        const q = txFilter.search.toLowerCase();
-        const hay = `${t.description} ${t.tag || ''} ${getCategoryById(t.categoryId).name}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    })
-    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const filtered = state.transactions.filter(t => {
+    const tDateStr = String(t.date || '');
+    if (txFilter.period === 'custom' || hasCustomDateRange) {
+      if (txFilter.dateFrom && tDateStr < txFilter.dateFrom) return false;
+      if (txFilter.dateTo && tDateStr > txFilter.dateTo) return false;
+    } else if (txFilter.period === 'month') {
+      if (!tDateStr.startsWith(state.selectedMonth)) return false;
+    } else if (txFilter.period === 'today') {
+      if (tDateStr !== today) return false;
+    } else if (txFilter.period === '7d' || txFilter.period === '30d') {
+      const days = txFilter.period === '7d' ? 7 : 30;
+      const tDate = new Date(tDateStr + 'T12:00:00');
+      const diff = (nowDate - tDate) / (1000 * 60 * 60 * 24);
+      if (diff > days || diff < -365) return false;
+    }
+    if (txFilter.type && t.type !== txFilter.type) return false;
+    if (txFilter.method && (t.method || 'Pix') !== txFilter.method) return false;
+    if (txFilter.categoryId && t.categoryId !== txFilter.categoryId) return false;
+    if (txFilter.accountId && t.accountId !== txFilter.accountId) return false;
+    if (txFilter.tag && (t.tag || '').toLowerCase() !== txFilter.tag.toLowerCase()) return false;
+    if (txFilter.search) {
+      const q = txFilter.search.toLowerCase();
+      const hay = `${t.description} ${t.tag || ''} ${getCategoryById(t.categoryId).name} ${getAccountById(t.accountId).name} ${t.method || ''}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const sortKey = txFilter.sortBy || 'date';
+  const factor = txFilter.sortDir === 'ascending' ? 1 : -1;
+  const isNum = sortKey === 'date' || sortKey === 'amount';
+
+  return filtered.sort((a, b) => {
+    const va = getTxSortValue(a, sortKey);
+    const vb = getTxSortValue(b, sortKey);
+    const cmp = isNum ? (va - vb) : txCollator.compare(String(va), String(vb));
+    if (cmp !== 0) return factor * cmp;
+    return (b.date || '').localeCompare(a.date || '');
+  });
 }
 
 function showUndoToast(msg) {
@@ -1479,10 +1535,37 @@ function renderTransacoesView() {
   const netCents = totalInCents - totalOutCents;
 
   const uniqueTags = [...new Set(state.transactions.map(t => (t.tag || '').trim()).filter(Boolean))];
+  const uniqueMethods = [...new Set([
+    'Conta Corrente / Pix',
+    'Cartão de Crédito',
+    'Aporte / Investimento',
+    'Resgate / Investimento',
+    ...state.transactions.map(t => (t.method || 'Pix').trim()).filter(Boolean)
+  ])];
 
   const catOptions = state.categories.map(c => `<option value="${esc(c.id)}" ${txFilter.categoryId === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
   const accOptions = state.accounts.map(a => `<option value="${esc(a.id)}" ${txFilter.accountId === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('');
   const tagOptions = uniqueTags.map(tag => `<option value="${esc(tag)}" ${txFilter.tag === tag ? 'selected' : ''}>#${esc(tag)}</option>`).join('');
+  const methodOptions = uniqueMethods.map(m => `<option value="${esc(m)}" ${txFilter.method === m ? 'selected' : ''}>${esc(m)}</option>`).join('');
+
+  const hasActiveFilters = Boolean(
+    txFilter.period !== 'month' ||
+    txFilter.dateFrom ||
+    txFilter.dateTo ||
+    txFilter.search ||
+    txFilter.categoryId ||
+    txFilter.accountId ||
+    txFilter.type ||
+    txFilter.method ||
+    txFilter.tag ||
+    txFilter.sortBy !== 'date' ||
+    txFilter.sortDir !== 'descending'
+  );
+
+  const renderSortTh = (key, label, type) => {
+    const ariaSort = txFilter.sortBy === key ? ` aria-sort="${txFilter.sortDir === 'ascending' ? 'ascending' : 'descending'}"` : '';
+    return `<th scope="col" data-sort-key="${key}" data-type="${type}"${ariaSort}><button type="button" class="th-sort-btn" commandfor="tx-data-table" command="--sort"><span>${label}</span><span class="th-sort-icon" aria-hidden="true"></span></button></th>`;
+  };
 
   const allSelected = filtered.length > 0 && filtered.every(t => selectedTxIds.has(t.id));
 
@@ -1510,32 +1593,34 @@ function renderTransacoesView() {
         const cat = getCategoryById(t.categoryId);
         const acc = getAccountById(t.accountId);
         const checked = selectedTxIds.has(t.id) ? 'checked' : '';
+        const rawDateNum = Number(String(t.date || '').replace(/\D/g, '').slice(0, 8)) || 0;
+        const signedCents = t.type === 'expense' ? -(Number(t.amountCents) || 0) : (Number(t.amountCents) || 0);
         return `
           <tr>
-            <td><input type="checkbox" class="tx-row-check" data-tx-check="${esc(t.id)}" ${checked} /></td>
-            <td>${esc(fmtDateBR(t.date))}</td>
-            <td style="font-weight:600;">
+            <td><input type="checkbox" class="tx-row-check" data-tx-check="${esc(t.id)}" aria-label="Selecionar ${esc(t.description)}" ${checked} /></td>
+            <td data-value="${rawDateNum}"><time datetime="${esc(t.date || '')}">${esc(fmtDateBR(t.date))}</time></td>
+            <td data-value="${esc(`${t.description || ''} ${t.tag || ''}`.trim())}" style="font-weight:600;">
               ${esc(t.description)}
               ${t.tag ? `<span class="tag-pill">#${esc(t.tag)}</span>` : ''}
             </td>
-            <td>
+            <td data-value="${esc(cat.name)}">
               <span style="display:inline-flex; align-items:center; gap:6px;">
                 <span class="cat-dot" style="background:${safeCssColor(cat.color)}"></span>
                 ${esc(cat.name)}
               </span>
             </td>
-            <td>${esc(acc.name)} · <span style="color:var(--text-muted); font-size:11.5px;">${esc(t.method || 'Pix')}</span></td>
-            <td>
+            <td data-value="${esc(`${acc.name} ${t.method || 'Pix'}`)}">${esc(acc.name)} · <span style="color:var(--text-muted); font-size:11.5px;">${esc(t.method || 'Pix')}</span></td>
+            <td data-value="${t.type === 'expense' ? 'Saída' : 'Entrada'}">
               <span class="badge-type ${t.type === 'expense' ? 'expense' : 'income'}">
                 ${t.type === 'expense' ? 'Saída' : 'Entrada'}
               </span>
             </td>
-            <td class="sensitive-val" style="font-weight:700; color:${t.type === 'expense' ? 'var(--coral-red)' : 'var(--green-emerald)'};">
+            <td data-value="${signedCents}" class="sensitive-val" style="font-weight:700; color:${t.type === 'expense' ? 'var(--coral-red)' : 'var(--green-emerald)'};">
               ${t.type === 'expense' ? '-' : '+'}${fmtBRL(t.amountCents)}
             </td>
             <td style="text-align:right; white-space:nowrap;">
-              <button class="btn-icon-edit" data-edit-tx="${esc(t.id)}">✎ Editar</button>
-              <button class="btn-danger-ghost" data-del-tx="${esc(t.id)}">Excluir</button>
+              <button type="button" class="btn-icon-edit" data-edit-tx="${esc(t.id)}">✎ Editar</button>
+              <button type="button" class="btn-danger-ghost" data-del-tx="${esc(t.id)}">Excluir</button>
             </td>
           </tr>
         `;
@@ -1546,38 +1631,66 @@ function renderTransacoesView() {
       <div class="section-toolbar">
         <div>
           <h3 class="card-title" style="font-size:15px;">Lançamentos & Filtros</h3>
-          <p class="vs-prev">Combine período, categoria, conta, tag ou texto e edite várias transações em lote.</p>
+          <p class="vs-prev">Filtre por intervalo de datas, tipo, categoria, conta ou método e clique nas colunas para ordenar.</p>
         </div>
         <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-          <button class="btn-secondary" id="btn-import-statement" title="Importar fatura ou extrato em CSV, Markdown (.md), PDF ou Imagem">
+          <button type="button" class="btn-secondary" id="btn-import-statement" title="Importar fatura ou extrato em CSV, Markdown (.md), PDF ou Imagem">
             ↑ Importar Fatura (CSV/MD/PDF/Foto)
           </button>
-          <button class="btn-primary" id="btn-new-tx-page">+ Lançamento Rápido</button>
+          <button type="button" class="btn-primary" id="btn-new-tx-page">+ Lançamento Rápido</button>
         </div>
       </div>
 
-      <div class="tx-filters-grid">
-        <input type="text" id="filter-search" class="form-input" placeholder="Buscar descrição ou tag..." value="${esc(txFilter.search)}" />
-        <select id="filter-period" class="form-select">
-          <option value="month" ${txFilter.period === 'month' ? 'selected' : ''}>Mês selecionado</option>
-          <option value="today" ${txFilter.period === 'today' ? 'selected' : ''}>Hoje</option>
-          <option value="7d" ${txFilter.period === '7d' ? 'selected' : ''}>Últimos 7 dias</option>
-          <option value="30d" ${txFilter.period === '30d' ? 'selected' : ''}>Últimos 30 dias</option>
-          <option value="all" ${txFilter.period === 'all' ? 'selected' : ''}>Todo o período</option>
-        </select>
-        <select id="filter-category" class="form-select">
-          <option value="">Todas categorias</option>
-          ${catOptions}
-        </select>
-        <select id="filter-account" class="form-select">
-          <option value="">Todas contas</option>
-          ${accOptions}
-        </select>
-        <select id="filter-tag" class="form-select">
-          <option value="">Todas tags</option>
-          ${tagOptions}
-        </select>
-      </div>
+      <search aria-label="Filtrar transações">
+        <div class="tx-filters-grid">
+          <input type="search" id="filter-search" class="form-input" placeholder="Buscar descrição, tag, conta..." value="${esc(txFilter.search)}" aria-label="Buscar transações" />
+          <select id="filter-period" class="form-select" aria-label="Filtrar por período">
+            <option value="month" ${txFilter.period === 'month' ? 'selected' : ''}>Mês selecionado</option>
+            <option value="today" ${txFilter.period === 'today' ? 'selected' : ''}>Hoje</option>
+            <option value="7d" ${txFilter.period === '7d' ? 'selected' : ''}>Últimos 7 dias</option>
+            <option value="30d" ${txFilter.period === '30d' ? 'selected' : ''}>Últimos 30 dias</option>
+            <option value="custom" ${txFilter.period === 'custom' ? 'selected' : ''}>Data personalizada</option>
+            <option value="all" ${txFilter.period === 'all' ? 'selected' : ''}>Todo o período</option>
+          </select>
+          <select id="filter-type" class="form-select" aria-label="Filtrar por tipo">
+            <option value="">Todos os tipos</option>
+            <option value="income" ${txFilter.type === 'income' ? 'selected' : ''}>Entradas (+)</option>
+            <option value="expense" ${txFilter.type === 'expense' ? 'selected' : ''}>Saídas (-)</option>
+          </select>
+          <select id="filter-category" class="form-select" aria-label="Filtrar por categoria">
+            <option value="">Todas categorias</option>
+            ${catOptions}
+          </select>
+          <select id="filter-account" class="form-select" aria-label="Filtrar por conta">
+            <option value="">Todas contas</option>
+            ${accOptions}
+          </select>
+          <select id="filter-tag" class="form-select" aria-label="Filtrar por tag">
+            <option value="">Todas tags</option>
+            ${tagOptions}
+          </select>
+        </div>
+
+        <div class="tx-date-range-bar">
+          <div class="tx-date-range-inputs">
+            <label class="tx-date-field" for="filter-date-from">
+              <span>De</span>
+              <input type="date" id="filter-date-from" class="form-input" value="${esc(txFilter.dateFrom)}" />
+            </label>
+            <label class="tx-date-field" for="filter-date-to">
+              <span>Até</span>
+              <input type="date" id="filter-date-to" class="form-input" value="${esc(txFilter.dateTo)}" />
+            </label>
+            <select id="filter-method" class="form-select" style="width:auto; min-width:165px; padding:6px 10px; font-size:12.5px;" aria-label="Filtrar por método">
+              <option value="">Todos os métodos</option>
+              ${methodOptions}
+            </select>
+          </div>
+          <div class="tx-date-quick-actions">
+            ${hasActiveFilters ? `<button type="button" class="btn-secondary tx-filter-clear-btn" id="btn-clear-tx-filters">Limpar filtros</button>` : ''}
+          </div>
+        </div>
+      </search>
 
       <div class="tx-summary-strip">
         <span><b>${filtered.length}</b> transação(ões)</span>
@@ -1590,18 +1703,20 @@ function renderTransacoesView() {
 
       ${batchBar}
 
-      <div class="table-responsive-wrap">
-        <table class="data-table">
+      <div id="tx-sort-status" class="visually-hidden" role="status"></div>
+      <div class="table-responsive-wrap" role="region" aria-labelledby="tx-table-caption" tabindex="0">
+        <table class="data-table" id="tx-data-table" style="min-inline-size:740px;">
+          <caption id="tx-table-caption" class="visually-hidden">Lista de transações financeiras filtradas</caption>
           <thead>
             <tr>
-              <th style="width:32px;"><input type="checkbox" id="tx-select-all" ${allSelected ? 'checked' : ''} /></th>
-              <th>Data</th>
-              <th>Descrição / Tag</th>
-              <th>Categoria</th>
-              <th>Conta / Método</th>
-              <th>Tipo</th>
-              <th>Valor</th>
-              <th style="text-align:right;">Ações</th>
+              <th scope="col" style="width:32px;"><input type="checkbox" id="tx-select-all" aria-label="Selecionar todas as transações" ${allSelected ? 'checked' : ''} /></th>
+              ${renderSortTh('date', 'Data', 'number')}
+              ${renderSortTh('description', 'Descrição / Tag', 'text')}
+              ${renderSortTh('category', 'Categoria', 'text')}
+              ${renderSortTh('account', 'Conta / Método', 'text')}
+              ${renderSortTh('type', 'Tipo', 'text')}
+              ${renderSortTh('amount', 'Valor', 'number')}
+              <th scope="col" style="text-align:right;">Ações</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -2757,16 +2872,132 @@ function bindTransacoesEvents() {
     });
   }
 
-  ['filter-period', 'filter-category', 'filter-account', 'filter-tag'].forEach(id => {
+  ['filter-period', 'filter-category', 'filter-account', 'filter-type', 'filter-method', 'filter-tag'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('change', (e) => {
-      const key = id.replace('filter-', '') === 'category' ? 'categoryId' : id.replace('filter-', '') === 'account' ? 'accountId' : id.replace('filter-', '');
+      const rawKey = id.replace('filter-', '');
+      const key = rawKey === 'category' ? 'categoryId' : rawKey === 'account' ? 'accountId' : rawKey;
       txFilter[key] = e.target.value;
+      if (key === 'period' && e.target.value !== 'custom') {
+        txFilter.dateFrom = '';
+        txFilter.dateTo = '';
+      }
+      selectedTxIds.clear();
+      renderApp();
+      if (key === 'period' && e.target.value === 'custom') {
+        document.getElementById('filter-date-from')?.focus();
+      }
+    });
+  });
+
+  ['filter-date-from', 'filter-date-to'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('change', (e) => {
+      const key = id === 'filter-date-from' ? 'dateFrom' : 'dateTo';
+      txFilter[key] = e.target.value || '';
+      if (txFilter.dateFrom || txFilter.dateTo) {
+        txFilter.period = 'custom';
+      } else if (txFilter.period === 'custom') {
+        txFilter.period = 'month';
+      }
       selectedTxIds.clear();
       renderApp();
     });
   });
+
+  const clearFiltersBtn = document.getElementById('btn-clear-tx-filters');
+  if (clearFiltersBtn) {
+    clearFiltersBtn.addEventListener('click', () => {
+      txFilter = {
+        period: 'month',
+        dateFrom: '',
+        dateTo: '',
+        search: '',
+        categoryId: '',
+        accountId: '',
+        type: '',
+        method: '',
+        tag: '',
+        sortBy: 'date',
+        sortDir: 'descending'
+      };
+      selectedTxIds.clear();
+      renderApp();
+    });
+  }
+
+  // Ordenação de tabela acessível (sortable-table: command/--sort + moveBefore + status)
+  const txTable = document.getElementById('tx-data-table');
+  if (txTable && txTable.tHead && txTable.tBodies?.[0]) {
+    const tbody = txTable.tBodies[0];
+    const sortStatusEl = document.getElementById('tx-sort-status');
+    const performTableSort = (sourceBtn) => {
+      const th = sourceBtn?.closest?.('th');
+      if (!th || !th.dataset.sortKey) return;
+      const prevSort = th.getAttribute('aria-sort');
+      const direction = prevSort === 'ascending' ? 'descending' : 'ascending';
+
+      for (const header of txTable.tHead.rows[0].cells) {
+        header.removeAttribute('aria-sort');
+      }
+      th.setAttribute('aria-sort', direction);
+
+      txFilter.sortBy = th.dataset.sortKey;
+      txFilter.sortDir = direction;
+
+      const dataRows = [...tbody.rows].filter(r => r.cells.length > 1);
+      if (dataRows.length > 1) {
+        const colIdx = th.cellIndex;
+        const colType = th.dataset.type || 'text';
+        const factor = direction === 'ascending' ? 1 : -1;
+        const keyed = dataRows.map(row => {
+          const cell = row.cells[colIdx];
+          const raw = cell?.dataset?.value ?? cell?.textContent?.trim() ?? '';
+          return { row, val: colType === 'number' ? Number(raw) || 0 : String(raw) };
+        });
+        keyed.sort((a, b) =>
+          factor * (colType === 'number' ? (a.val - b.val) : txCollator.compare(a.val, b.val))
+        );
+        const orderedRows = keyed.map(k => k.row);
+        const applyDomReorder = () => {
+          for (const row of orderedRows) {
+            if (typeof tbody.moveBefore === 'function') {
+              tbody.moveBefore(row, null);
+            } else {
+              tbody.appendChild(row);
+            }
+          }
+        };
+        if (typeof txTable.startViewTransition === 'function' && orderedRows.length <= 80) {
+          txTable.startViewTransition(applyDomReorder);
+        } else {
+          applyDomReorder();
+        }
+      }
+
+      if (sortStatusEl) {
+        const dirLabel = direction === 'ascending' ? 'crescente' : 'decrescente';
+        sortStatusEl.textContent = `Ordenado por ${sourceBtn.textContent.trim()}, ${dirLabel}, ${dataRows.length} linha(s)`;
+      }
+      sourceBtn.focus?.();
+    };
+
+    const supportsInvokerCommands =
+      typeof HTMLButtonElement !== 'undefined' && 'command' in HTMLButtonElement.prototype;
+
+    txTable.addEventListener('command', (event) => {
+      if (event.command !== '--sort') return;
+      performTableSort(event.source);
+    });
+
+    if (!supportsInvokerCommands) {
+      txTable.querySelectorAll('.th-sort-btn').forEach(btn => {
+        btn.addEventListener('click', () => performTableSort(btn));
+      });
+    }
+  }
 
   const selAll = document.getElementById('tx-select-all');
   if (selAll) {
@@ -3785,9 +4016,10 @@ function renderPatrimonioView() {
               ${fmtBRL(a.weeklyDeltaCents || 0, true)}
             </td>
             <td style="text-align:right;">
-              <div style="display:flex; gap:6px; justify-content:flex-end;">
-                <button class="btn-secondary" data-aporte-asset="${esc(a.id)}">+ Aporte</button>
-                <button class="btn-icon-edit" data-edit-asset="${esc(a.id)}">Editar</button>
+              <div style="display:flex; gap:6px; justify-content:flex-end; flex-wrap:wrap;">
+                <button type="button" class="btn-secondary" data-aporte-asset="${esc(a.id)}">+ Aporte</button>
+                <button type="button" class="btn-secondary btn-resgate-asset" data-resgate-asset="${esc(a.id)}" ${amtCents <= 0 ? 'disabled title="Sem saldo disponível para resgate"' : 'title="Retirar dinheiro deste investimento"'}>− Resgatar</button>
+                <button type="button" class="btn-icon-edit" data-edit-asset="${esc(a.id)}">Editar</button>
               </div>
             </td>
           </tr>
@@ -3954,20 +4186,29 @@ function bindPatrimonioEvents() {
     btn.addEventListener('click', () => {
       const asset = state.assets.find(a => a.id === btn.dataset.aporteAsset);
       if (!asset) return;
+      const bankAccounts = state.accounts.filter(a => a.type !== 'Cartão de Crédito');
+      const selectOptions = [
+        ...bankAccounts.map(a => ({ value: a.id, label: `Debitar da conta: ${a.name}` })),
+        { value: '', label: 'Apenas somar ao patrimônio (sem debitar conta)' }
+      ];
       openDialogModal({
         title: `Aporte em "${asset.name}"`,
-        message: 'Informe o valor a somar neste investimento:',
+        message: 'Informe o valor a investir e a conta de origem:',
         inputLabel: 'Valor do aporte (R$)',
         inputType: 'number',
         defaultValue: '100.00',
         placeholder: '100,00',
+        selectLabel: 'Origem do aporte',
+        selectOptions,
+        defaultSelectValue: bankAccounts[0]?.id || '',
         confirmLabel: 'Confirmar Aporte',
-        onConfirm: (val) => {
+        validate: (val) => (toCents(val) > 0 ? '' : 'Informe um valor maior que zero.'),
+        onConfirm: (val, sourceAccId) => {
           const valCents = toCents(val);
           if (valCents > 0) {
             asset.amountCents = (Number(asset.amountCents) || 0) + valCents;
             asset.weeklyDeltaCents = (Number(asset.weeklyDeltaCents) || 0) + valCents;
-            const sourceAcc = state.accounts.find(a => a.type !== 'Cartão de Crédito') || state.accounts[0];
+            const sourceAcc = sourceAccId ? state.accounts.find(a => a.id === sourceAccId) : null;
             if (sourceAcc) {
               state.transactions.push({
                 id: 'tx-ast-' + Date.now(),
@@ -3976,7 +4217,7 @@ function bindPatrimonioEvents() {
                 amountCents: valCents,
                 description: `Aporte em ${asset.name}`,
                 tag: 'investimento',
-                categoryId: state.categories[0]?.id || 'cat-moradia',
+                categoryId: state.categories.find(c => c.id === 'cat-invest')?.id || state.categories[0]?.id || 'cat-moradia',
                 accountId: sourceAcc.id,
                 date: getTodayISO().startsWith(state.selectedMonth) ? getTodayISO() : `${state.selectedMonth}-10`,
                 method: 'Aporte / Investimento'
@@ -3984,8 +4225,76 @@ function bindPatrimonioEvents() {
             }
             saveState();
             renderApp();
-            showUndoToast(`Aporte de ${fmtBRL(valCents)} debitado de ${sourceAcc?.name || 'Conta'}.`);
+            showUndoToast(
+              sourceAcc
+                ? `Aporte de ${fmtBRL(valCents)} debitado de ${sourceAcc.name}.`
+                : `Aporte de ${fmtBRL(valCents)} adicionado em ${asset.name}.`
+            );
           }
+        }
+      });
+    });
+  });
+
+  document.querySelectorAll('[data-resgate-asset]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const asset = state.assets.find(a => a.id === btn.dataset.resgateAsset);
+      if (!asset) return;
+      const availableCents = Math.max(0, Number(asset.amountCents) || 0);
+      if (availableCents <= 0) {
+        showUndoToast(`O ativo "${asset.name}" não possui saldo disponível para resgate.`);
+        return;
+      }
+      const bankAccounts = state.accounts.filter(a => a.type !== 'Cartão de Crédito');
+      const selectOptions = [
+        ...bankAccounts.map(a => ({ value: a.id, label: `Creditar na conta: ${a.name}` })),
+        { value: '', label: 'Apenas retirar do patrimônio (não creditar em conta)' }
+      ];
+      openDialogModal({
+        title: `Resgatar de "${asset.name}"`,
+        message: `Saldo disponível: ${fmtBRL(availableCents)}. Informe quanto deseja retirar do patrimônio:`,
+        inputLabel: 'Valor do resgate (R$)',
+        inputType: 'number',
+        defaultValue: fromCents(availableCents).toFixed(2),
+        maxValue: fromCents(availableCents).toFixed(2),
+        placeholder: fromCents(availableCents).toFixed(2).replace('.', ','),
+        selectLabel: 'Destino do valor resgatado',
+        selectOptions,
+        defaultSelectValue: bankAccounts[0]?.id || '',
+        confirmLabel: 'Confirmar Resgate',
+        validate: (val) => {
+          const c = toCents(val);
+          if (c <= 0) return 'Informe um valor maior que zero.';
+          if (c > availableCents) return `O valor máximo para resgate é ${fmtBRL(availableCents)}.`;
+          return '';
+        },
+        onConfirm: (val, destAccId) => {
+          const valCents = Math.min(availableCents, toCents(val));
+          if (valCents <= 0) return;
+          asset.amountCents = Math.max(0, availableCents - valCents);
+          asset.weeklyDeltaCents = (Number(asset.weeklyDeltaCents) || 0) - valCents;
+          const destAcc = destAccId ? state.accounts.find(a => a.id === destAccId) : null;
+          if (destAcc) {
+            state.transactions.push({
+              id: 'tx-resg-' + Date.now(),
+              isAssetTransfer: true,
+              type: 'income',
+              amountCents: valCents,
+              description: `Resgate de ${asset.name}`,
+              tag: 'resgate',
+              categoryId: state.categories.find(c => c.id === 'cat-invest')?.id || state.categories[0]?.id || 'cat-receita',
+              accountId: destAcc.id,
+              date: getTodayISO().startsWith(state.selectedMonth) ? getTodayISO() : `${state.selectedMonth}-10`,
+              method: 'Resgate / Investimento'
+            });
+          }
+          saveState();
+          renderApp();
+          showUndoToast(
+            destAcc
+              ? `Resgate de ${fmtBRL(valCents)} creditado em ${destAcc.name}.`
+              : `Resgate de ${fmtBRL(valCents)} retirado de ${asset.name}.`
+          );
         }
       });
     });
@@ -5839,13 +6148,32 @@ function openAccountModal(accId = null) {
   setTimeout(() => document.getElementById('acc-name').focus(), 40);
 }
 
-function openDialogModal({ title, message, inputLabel, inputType = 'text', defaultValue = '', placeholder = '', confirmLabel = 'Confirmar', onConfirm }) {
+function openDialogModal({
+  title,
+  message,
+  inputLabel,
+  inputType = 'text',
+  defaultValue = '',
+  maxValue = '',
+  placeholder = '',
+  selectLabel = '',
+  selectOptions = null,
+  defaultSelectValue = '',
+  confirmLabel = 'Confirmar',
+  validate = null,
+  onConfirm
+}) {
   const modal = document.getElementById('modal-dialog');
   const titleEl = document.getElementById('dialog-title');
   const msgEl = document.getElementById('dialog-message');
   const wrapEl = document.getElementById('dialog-input-wrap');
   const labelEl = document.getElementById('dialog-input-label');
+  const prefixEl = document.getElementById('dialog-input-prefix');
   const inputEl = document.getElementById('dialog-input');
+  const selectWrapEl = document.getElementById('dialog-select-wrap');
+  const selectLabelEl = document.getElementById('dialog-select-label');
+  const selectEl = document.getElementById('dialog-select');
+  const errEl = document.getElementById('dialog-error');
   const confirmBtn = document.getElementById('dialog-confirm-btn');
   const cancelBtn = document.getElementById('dialog-cancel-btn');
   const closeX = document.getElementById('dialog-close-x');
@@ -5854,21 +6182,48 @@ function openDialogModal({ title, message, inputLabel, inputType = 'text', defau
   titleEl.textContent = title || 'Confirmar';
   msgEl.textContent = message || '';
   confirmBtn.textContent = confirmLabel || 'Confirmar';
+  if (errEl) {
+    errEl.textContent = '';
+    errEl.style.display = 'none';
+  }
 
   const hasInput = Boolean(inputLabel);
   wrapEl.style.display = hasInput ? 'block' : 'none';
   if (hasInput) {
     labelEl.textContent = inputLabel;
     inputEl.type = inputType;
+    if (prefixEl) prefixEl.style.display = inputType === 'number' ? 'inline-flex' : 'none';
     if (inputType === 'number') {
       inputEl.step = '0.01';
       inputEl.min = '0';
+      if (maxValue !== '' && maxValue !== undefined && maxValue !== null) {
+        inputEl.max = String(maxValue);
+      } else {
+        inputEl.removeAttribute('max');
+      }
     } else {
       inputEl.removeAttribute('step');
       inputEl.removeAttribute('min');
+      inputEl.removeAttribute('max');
     }
     inputEl.value = defaultValue;
     inputEl.placeholder = placeholder;
+  }
+
+  const hasSelect = Boolean(selectWrapEl && selectEl && Array.isArray(selectOptions) && selectOptions.length > 0);
+  if (selectWrapEl) {
+    selectWrapEl.style.display = hasSelect ? 'block' : 'none';
+  }
+  if (hasSelect) {
+    if (selectLabelEl) selectLabelEl.textContent = selectLabel || 'Opção';
+    selectEl.textContent = '';
+    selectOptions.forEach(opt => {
+      const optionEl = document.createElement('option');
+      optionEl.value = String(opt.value ?? '');
+      optionEl.textContent = String(opt.label ?? '');
+      selectEl.appendChild(optionEl);
+    });
+    selectEl.value = String(defaultSelectValue ?? selectOptions[0].value ?? '');
   }
 
   const close = (immediate = false) => closeFarolModal(modal, immediate);
@@ -5876,8 +6231,21 @@ function openDialogModal({ title, message, inputLabel, inputType = 'text', defau
   closeX.onclick = () => close(false);
   form.onsubmit = (e) => {
     e.preventDefault();
+    const val = hasInput ? inputEl.value : true;
+    const selVal = hasSelect ? selectEl.value : '';
+    if (typeof validate === 'function') {
+      const errMsg = validate(val, selVal);
+      if (errMsg) {
+        if (errEl) {
+          errEl.textContent = errMsg;
+          errEl.style.display = 'block';
+        }
+        if (hasInput) inputEl.focus();
+        return;
+      }
+    }
     close(true);
-    if (onConfirm) onConfirm(hasInput ? inputEl.value : true);
+    if (onConfirm) onConfirm(val, selVal);
   };
 
   openFarolModal(modal);

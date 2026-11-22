@@ -165,7 +165,7 @@ function read(rel) {
   const runnable = engineSrc.replace(/export\s+function\s+initFarolApp/, 'function initFarolApp');
   new vm.Script(
     runnable +
-      '\nglobalThis.__sec = { esc, safeCssColor, getCleanEmptyState, setState: s => { state = s; }, renderVisaoGeral, renderTransacoesView, renderRecorrenciasView, renderFluxoCaixaView, renderFaturasView, renderCategoriasView, renderMetasView, renderPatrimonioView, renderContasView, renderInvoiceReviewTable, setReviewItems: arr => { invoiceReviewItems = arr; } };'
+      '\nglobalThis.__sec = { esc, safeCssColor, getCleanEmptyState, setState: s => { state = s; }, getState: () => state, getTxFilter: () => txFilter, setTxFilter: f => { txFilter = { ...txFilter, ...f }; }, getFilteredTransactions, getAccountBalanceCents, computeMonthMetrics, isInternalTransferTx, renderVisaoGeral, renderTransacoesView, renderRecorrenciasView, renderFluxoCaixaView, renderFaturasView, renderCategoriasView, renderMetasView, renderPatrimonioView, renderContasView, renderInvoiceReviewTable, setReviewItems: arr => { invoiceReviewItems = arr; } };'
   ).runInContext(ctx);
 
   const sec = ctx.__sec;
@@ -221,4 +221,75 @@ function read(rel) {
   const tbodyHtml = elements.get('imp-review-tbody').innerHTML;
   assert.ok(!tbodyHtml.includes('<img src=x'), 'Invoice review table must HTML-escape AI/CSV cleanTitle & categories');
   console.log('PASS [Security 5] XSS & CSS injection vectors neutralized across all views and invoice review table');
+
+  // 6. Transaction Date/Type/Method Filters, Sortable Table Markup, and Patrimônio Resgate Accounting
+  const st = sec.getCleanEmptyState('Teste Filtros');
+  st.selectedMonth = '2026-11';
+  st.accounts = [
+    { id: 'acc-nubank', name: 'Conta Principal', type: 'Conta Corrente', initialBalanceCents: 100000, limitCents: 0, closingDay: 5, dueDay: 12 },
+  ];
+  st.transactions = [
+    { id: 't1', type: 'expense', amountCents: 15000, description: 'Mercado Alfa', tag: 'casa', categoryId: 'cat-mercado', accountId: 'acc-nubank', date: '2026-11-05', method: 'Conta Corrente / Pix' },
+    { id: 't2', type: 'income', amountCents: 400000, description: 'Salário', tag: 'fixo', categoryId: 'cat-receita', accountId: 'acc-nubank', date: '2026-11-10', method: 'Conta Corrente / Pix' },
+    { id: 't3', type: 'expense', amountCents: 8000, description: 'Uber Centro', tag: '', categoryId: 'cat-transporte', accountId: 'acc-nubank', date: '2026-11-20', method: 'Cartão de Crédito' },
+  ];
+  st.assets = [
+    { id: 'ast-1', name: 'CDB 110%', category: 'Renda Fixa (CDB)', institution: 'Inter', liquidity: 'Diária', cdbPercent: 110, amountCents: 50000, weeklyDeltaCents: 0 },
+    { id: 'ast-zero', name: 'Tesouro Zero', category: 'Tesouro Direto', institution: 'B3', liquidity: 'D+1', cdbPercent: 100, amountCents: 0, weeklyDeltaCents: 0 },
+  ];
+  sec.setState(st);
+
+  // Date range custom filter
+  sec.setTxFilter({ period: 'custom', dateFrom: '2026-11-06', dateTo: '2026-11-15', type: '', method: '', sortBy: 'date', sortDir: 'descending' });
+  const rangeTxs = sec.getFilteredTransactions();
+  assert.equal(rangeTxs.length, 1);
+  assert.equal(rangeTxs[0].id, 't2');
+
+  // Ascending date sort
+  sec.setTxFilter({ period: 'month', dateFrom: '', dateTo: '', sortBy: 'date', sortDir: 'ascending' });
+  const ascDates = sec.getFilteredTransactions().map(t => t.id);
+  assert.deepEqual(ascDates, ['t1', 't2', 't3']);
+
+  // Descending amount sort (signed: income +400000 > expense -8000 > expense -15000)
+  sec.setTxFilter({ sortBy: 'amount', sortDir: 'descending' });
+  const descAmt = sec.getFilteredTransactions().map(t => t.id);
+  assert.deepEqual(descAmt, ['t2', 't3', 't1']);
+
+  // Type & method filter
+  sec.setTxFilter({ type: 'expense', method: 'Cartão de Crédito', sortBy: 'date', sortDir: 'descending' });
+  const cardExp = sec.getFilteredTransactions();
+  assert.equal(cardExp.length, 1);
+  assert.equal(cardExp[0].id, 't3');
+
+  // Sortable table semantic markup check
+  const txHtml = sec.renderTransacoesView();
+  assert.ok(txHtml.includes('id="filter-date-from"'), 'Must render date-from input');
+  assert.ok(txHtml.includes('id="filter-date-to"'), 'Must render date-to input');
+  assert.ok(txHtml.includes('commandfor="tx-data-table" command="--sort"'), 'Sortable headers must use invoker commands');
+  assert.ok(txHtml.includes('aria-sort="descending"'), 'Active sorted th must expose aria-sort');
+
+  // Patrimônio withdrawal button & transfer accounting check
+  const patHtml = sec.renderPatrimonioView();
+  assert.ok(patHtml.includes('data-resgate-asset="ast-1"'), 'Must render Resgatar button for assets');
+  assert.ok(/data-resgate-asset="ast-zero"[^>]*disabled/.test(patHtml), 'Zero-balance asset Resgatar button must be disabled');
+
+  const balBefore = sec.getAccountBalanceCents(st.accounts[0]);
+  const incBefore = sec.computeMonthMetrics('2026-11').incomeCents;
+  st.assets[0].amountCents -= 20000;
+  st.transactions.push({
+    id: 'tx-resg-test',
+    isAssetTransfer: true,
+    type: 'income',
+    amountCents: 20000,
+    description: 'Resgate de CDB 110%',
+    tag: 'resgate',
+    categoryId: 'cat-invest',
+    accountId: 'acc-nubank',
+    date: '2026-11-22',
+    method: 'Resgate / Investimento',
+  });
+  assert.equal(sec.isInternalTransferTx(st.transactions[st.transactions.length - 1]), true);
+  assert.equal(sec.getAccountBalanceCents(st.accounts[0]), balBefore + 20000, 'Withdrawal credited to account must raise bank balance');
+  assert.equal(sec.computeMonthMetrics('2026-11').incomeCents, incBefore, 'Patrimônio withdrawal must not inflate operational monthly income');
+  console.log('PASS [Feature 6] Transaction date/type/method filters, sortable headers, and Patrimônio withdrawal verified');
 }

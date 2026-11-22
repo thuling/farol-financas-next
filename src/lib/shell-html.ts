@@ -1525,11 +1525,20 @@ export const FAROL_SHELL_HTML = `<!-- ==================== TELA INICIAL DE LOGIN
             <div class="form-group" style="margin-bottom:0;">
               <label class="form-label" id="dialog-input-label" for="dialog-input">Valor</label>
               <div class="field-box">
-                <span class="field-prefix" aria-hidden="true">R$</span>
+                <span class="field-prefix" id="dialog-input-prefix" aria-hidden="true">R$</span>
                 <input type="text" id="dialog-input" name="dialogValue" class="form-input" />
               </div>
             </div>
           </div>
+          <div class="modal-section" id="dialog-select-wrap" style="display:none; margin-top:12px;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" id="dialog-select-label" for="dialog-select">Conta</label>
+              <div class="field-box">
+                <select id="dialog-select" name="dialogSelect" class="form-select"></select>
+              </div>
+            </div>
+          </div>
+          <p id="dialog-error" role="alert" style="display:none; margin:10px 0 0; font-size:12.5px; font-weight:600; color:var(--coral-red);"></p>
         </div>
         <div class="modal-footer">
           <div class="modal-footer-right">
