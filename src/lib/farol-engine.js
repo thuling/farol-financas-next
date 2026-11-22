@@ -4,6 +4,9 @@
 
 const USERS_INDEX_KEY = 'farol_financas_users_v2';
 const LEGACY_V1_KEY = 'farol_financas_state_v1';
+const INSTALLMENT_DESC_RE = /^(.*?)\s*\((\d{1,2})\s*\/\s*(\d{1,2})\)\s*$/;
+const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const YM_RE = /^(\d{4})-(\d{2})$/;
 
 function esc(val) {
   return String(val ?? '')
@@ -428,10 +431,6 @@ function upgradeLegacyThemeOnce(st) {
 // ============================================================
 // SANITIZAÇÃO E DEDUPLICAÇÃO DE PARCELAMENTOS E RECORRÊNCIAS
 // ============================================================
-const INSTALLMENT_DESC_RE = /^(.*?)\s*\((\d{1,2})\s*\/\s*(\d{1,2})\)\s*$/;
-const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
-const YM_RE = /^(\d{4})-(\d{2})$/;
-
 function normalizeTxText(value) {
   return String(value ?? '')
     .normalize('NFD')

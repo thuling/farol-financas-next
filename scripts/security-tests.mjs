@@ -466,4 +466,61 @@ function read(rel) {
     assert.ok(htmlEdge.includes('(0%)'), 'Zero goal progress must render (0%) cleanly');
     console.log('PASS [Feature 8] Enriched Visão Geral 4 cards, tabular-nums, dynamic limit colors, insights pager, and zero-state fallbacks verified');
   }
+
+  // 9. Returning-user cold boot with pre-populated localStorage (guards against TDZ / module-eval crashes)
+  {
+    const prePopStorage = new Map();
+    prePopStorage.set('farol_financas_users_v2', JSON.stringify({
+      activeUserId: 'usr-returning',
+      users: [{ id: 'usr-returning', name: 'Thulio' }],
+    }));
+    prePopStorage.set('farol_financas_data_v2_usr-returning', JSON.stringify({
+      selectedMonth: '2026-11',
+      currentTab: 'visao-geral',
+      theme: 'dark',
+      profile: { name: 'Thulio', plan: 'Plano pessoal', monthlyBudgetCents: 200000, emergencyGoalCents: 100000 },
+      accounts: [{ id: 'acc-1', name: 'Nubank', type: 'Conta + Cartão', initialBalanceCents: 0, limitCents: 500000, closingDay: 5, dueDay: 12 }],
+      transactions: [
+        { id: 't-1', type: 'expense', amountCents: 10000, description: 'Compra (1/3)', date: '2026-11-10', accountId: 'acc-1', categoryId: 'cat-compras', method: 'Cartão de Crédito' },
+        { id: 't-2', type: 'expense', amountCents: 10000, description: 'Compra (2/3)', date: '2026-12-10', accountId: 'acc-1', categoryId: 'cat-compras', method: 'Cartão de Crédito' },
+        { id: 't-2-dup', type: 'expense', amountCents: 10000, description: 'Compra (2/3)', date: '2026-12-10', accountId: 'acc-1', categoryId: 'cat-compras', method: 'Cartão de Crédito' },
+      ],
+      recurrences: [],
+      goals: [{ id: 'g-1', title: 'Reserva', currentCents: 10000, targetCents: 100000, deadline: '2027-11', color: '#38b6ff' }],
+      assets: [],
+      categories: [],
+    }));
+    const bootCtx = vm.createContext({
+      console,
+      Intl,
+      Date,
+      Math,
+      JSON,
+      setTimeout,
+      clearTimeout,
+      setInterval,
+      clearInterval,
+      fetch: async () => ({ ok: false, json: async () => ({}) }),
+      window: {
+        localStorage: {
+          getItem: (k) => (prePopStorage.has(k) ? prePopStorage.get(k) : null),
+          setItem: (k, v) => prePopStorage.set(k, String(v)),
+          removeItem: (k) => prePopStorage.delete(k),
+        },
+        location: { pathname: '/' },
+      },
+      document: {
+        documentElement: { setAttribute() {}, getAttribute() { return 'dark'; } },
+        body: { classList: { toggle() {}, add() {}, remove() {} } },
+        getElementById: () => makeEl('boot-el'),
+        querySelectorAll: () => [],
+        addEventListener() {},
+      },
+    });
+    bootCtx.globalThis = bootCtx;
+    bootCtx.self = bootCtx;
+    new vm.Script(runnable + '\nglobalThis.__bootState = state;').runInContext(bootCtx);
+    assert.equal(bootCtx.__bootState.transactions.length, 2, 'Cold boot with pre-populated localStorage must sanitize duplicates without TDZ error');
+    console.log('PASS [Boot 9] Returning-user cold boot with pre-populated localStorage verified (zero TDZ/init crash)');
+  }
 }
