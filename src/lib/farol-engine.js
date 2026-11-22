@@ -86,8 +86,9 @@ function fmtMonthLabel(ym) {
 }
 
 function addMonthsYM(ym, delta) {
-  const [y, m] = ym.split('-').map(Number);
-  const d = new Date(y, (m - 1) + delta, 1);
+  const safeYM = typeof ym === 'string' && YM_RE.test(ym) ? ym : '2026-11';
+  const [y, m] = safeYM.split('-').map(Number);
+  const d = new Date(y || 2026, ((m || 11) - 1) + (Number(delta) || 0), 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
@@ -350,8 +351,11 @@ function migrateLegacyV1(v1) {
   };
 }
 
-let usersIndex = getUsersIndex();
-let state = loadState();
+let usersIndex = {
+  activeUserId: 'user-default',
+  users: [{ id: 'user-default', name: 'Meu nome' }]
+};
+let state = getCleanEmptyState('Meu nome');
 
 // Estado efêmero de UI (filtros, ordenação, seleção em lote, desfazer)
 let txFilter = {
@@ -843,37 +847,93 @@ function sanitizeWorkspaceInstallments(st) {
   return { state: st, changed, removedTransactions, removedRecurrences, fixedDates };
 }
 
+function ensureValidStateShape(candidate, fallbackName = 'Meu nome') {
+  const base = getCleanEmptyState(fallbackName);
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+    return base;
+  }
+  const rawProfile = candidate.profile && typeof candidate.profile === 'object' && !Array.isArray(candidate.profile)
+    ? candidate.profile
+    : {};
+  const selYM = typeof candidate.selectedMonth === 'string' && YM_RE.test(candidate.selectedMonth)
+    ? candidate.selectedMonth
+    : base.selectedMonth;
+  return {
+    ...base,
+    ...candidate,
+    selectedMonth: selYM,
+    currentTab: typeof candidate.currentTab === 'string' && candidate.currentTab ? candidate.currentTab : 'visao-geral',
+    accumulatedSubTab: typeof candidate.accumulatedSubTab === 'string' && candidate.accumulatedSubTab ? candidate.accumulatedSubTab : 'gastos',
+    profile: {
+      ...base.profile,
+      ...rawProfile,
+      name: String(rawProfile.name || fallbackName || 'Meu nome'),
+      plan: String(rawProfile.plan || 'Plano pessoal'),
+      monthlyBudgetCents: Number(rawProfile.monthlyBudgetCents) || 0,
+      emergencyGoalCents: Number(rawProfile.emergencyGoalCents) || 0,
+      monthlySalaryCents: Number(rawProfile.monthlySalaryCents) || 0,
+      salaryDay: Math.min(28, Math.max(1, Number(rawProfile.salaryDay) || 5))
+    },
+    categories: Array.isArray(candidate.categories) && candidate.categories.length > 0
+      ? candidate.categories.filter(c => c && typeof c === 'object')
+      : base.categories,
+    accounts: Array.isArray(candidate.accounts) && candidate.accounts.length > 0
+      ? candidate.accounts.filter(a => a && typeof a === 'object')
+      : base.accounts,
+    transactions: Array.isArray(candidate.transactions)
+      ? candidate.transactions.filter(t => t && typeof t === 'object')
+      : [],
+    recurrences: Array.isArray(candidate.recurrences)
+      ? candidate.recurrences.filter(r => r && typeof r === 'object')
+      : [],
+    goals: Array.isArray(candidate.goals)
+      ? candidate.goals.filter(g => g && typeof g === 'object')
+      : [],
+    assets: Array.isArray(candidate.assets)
+      ? candidate.assets.filter(a => a && typeof a === 'object')
+      : [],
+    invoiceMeta: candidate.invoiceMeta && typeof candidate.invoiceMeta === 'object' && !Array.isArray(candidate.invoiceMeta)
+      ? candidate.invoiceMeta
+      : {}
+  };
+}
+
 function loadStateForUser(userId = usersIndex.activeUserId, fallbackName = null) {
   const targetId = userId || 'user-default';
-  const resolvedName = fallbackName || usersIndex.users.find(u => u.id === targetId)?.name || 'Meu nome';
+  const resolvedName = fallbackName || usersIndex.users.find(u => u && u.id === targetId)?.name || 'Meu nome';
   const cleanBase = getCleanEmptyState(resolvedName);
   if (typeof window === 'undefined') return cleanBase;
 
-  const stored = readStoredStateRaw(targetId);
-  if (stored) {
-    if (isUntouchedDemoState(stored)) {
-      return cleanBase;
+  try {
+    const stored = readStoredStateRaw(targetId);
+    if (stored) {
+      if (isUntouchedDemoState(stored)) {
+        return cleanBase;
+      }
+      const shaped = ensureValidStateShape(stored, resolvedName);
+      const merged = upgradeLegacyThemeOnce(mergeDefaultCategories(shaped));
+      const cleaned = sanitizeWorkspaceInstallments(merged);
+      if (cleaned.changed) {
+        try {
+          window.localStorage.setItem(getUserStorageKey(targetId), JSON.stringify(cleaned.state));
+        } catch (e) {}
+      }
+      return cleaned.state;
     }
-    const merged = upgradeLegacyThemeOnce(mergeDefaultCategories({ ...cleanBase, ...stored }));
-    const cleaned = sanitizeWorkspaceInstallments(merged);
-    if (cleaned.changed) {
-      try {
-        window.localStorage.setItem(getUserStorageKey(targetId), JSON.stringify(cleaned.state));
-      } catch (e) {}
-    }
-    return cleaned.state;
-  }
 
-  if (targetId === 'user-default') {
-    try {
+    if (targetId === 'user-default') {
       const legacyRaw = window.localStorage.getItem(LEGACY_V1_KEY);
       if (legacyRaw && legacyRaw !== 'undefined') {
-        const migrated = upgradeLegacyThemeOnce(mergeDefaultCategories(migrateLegacyV1(JSON.parse(legacyRaw))));
+        const migrated = upgradeLegacyThemeOnce(
+          mergeDefaultCategories(ensureValidStateShape(migrateLegacyV1(JSON.parse(legacyRaw)), resolvedName))
+        );
         const cleaned = sanitizeWorkspaceInstallments(migrated);
         window.localStorage.setItem(getUserStorageKey(targetId), JSON.stringify(cleaned.state));
         return cleaned.state;
       }
-    } catch (e) {}
+    }
+  } catch (err) {
+    console.warn('[Farol] Fallback to clean state on load error:', err);
   }
 
   return cleanBase;
@@ -1209,14 +1269,20 @@ function updateThemeButtonIcon(theme) {
 }
 
 function renderApp() {
+  if (!state || !state.profile || !Array.isArray(state.transactions) || !Array.isArray(state.recurrences) || !Array.isArray(state.accounts)) {
+    state = ensureValidStateShape(state, state?.profile?.name || 'Meu nome');
+  }
   syncRecurrencesForMonth(state.selectedMonth);
   const activeTheme = state.theme || 'light';
   document.documentElement.setAttribute('data-theme', activeTheme);
   updateThemeButtonIcon(activeTheme);
 
-  document.getElementById('user-name-label').textContent = state.profile.name;
-  document.getElementById('user-plan-label').textContent = state.profile.plan;
-  document.getElementById('user-avatar').textContent = (state.profile.name || 'M').trim().charAt(0).toUpperCase();
+  const nameEl = document.getElementById('user-name-label');
+  if (nameEl) nameEl.textContent = state.profile.name;
+  const planEl = document.getElementById('user-plan-label');
+  if (planEl) planEl.textContent = state.profile.plan;
+  const avatarEl = document.getElementById('user-avatar');
+  if (avatarEl) avatarEl.textContent = (state.profile.name || 'M').trim().charAt(0).toUpperCase();
 
   const monthSel = document.getElementById('month-selector');
   if (monthSel) monthSel.value = state.selectedMonth;
@@ -7334,6 +7400,7 @@ function resolveAuthenticatedWorkspaceState(user, candidateServerState, authPurp
     }
   }
 
+  nextState = ensureValidStateShape(nextState, user.name);
   nextState.userEmail = user.email;
   if (nextState.profile) nextState.profile.name = user.name;
   nextState.isExplicitDemo = false;

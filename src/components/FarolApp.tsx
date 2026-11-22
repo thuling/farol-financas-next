@@ -6,7 +6,11 @@ import { initFarolApp } from '@/lib/farol-engine';
 
 export function FarolApp() {
   useEffect(() => {
-    initFarolApp();
+    try {
+      initFarolApp();
+    } catch (err) {
+      console.error('[Farol Init] Client boot recovery:', err);
+    }
   }, []);
 
   return (

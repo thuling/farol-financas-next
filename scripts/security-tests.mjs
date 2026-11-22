@@ -515,12 +515,20 @@ function read(rel) {
         getElementById: () => makeEl('boot-el'),
         querySelectorAll: () => [],
         addEventListener() {},
+        removeEventListener() {},
       },
     });
     bootCtx.globalThis = bootCtx;
     bootCtx.self = bootCtx;
-    new vm.Script(runnable + '\nglobalThis.__bootState = state;').runInContext(bootCtx);
+    new vm.Script(runnable + '\ninitFarolApp();\nglobalThis.__bootState = state;\nglobalThis.__ensureShape = ensureValidStateShape;').runInContext(bootCtx);
     assert.equal(bootCtx.__bootState.transactions.length, 2, 'Cold boot with pre-populated localStorage must sanitize duplicates without TDZ error');
-    console.log('PASS [Boot 9] Returning-user cold boot with pre-populated localStorage verified (zero TDZ/init crash)');
+
+    // Corrupted partial state recovery check
+    const healed = bootCtx.__ensureShape({ selectedMonth: null, profile: null, transactions: null, recurrences: 'bad', accounts: [] }, 'Thulio');
+    assert.equal(healed.selectedMonth, '2026-11');
+    assert.equal(healed.profile.name, 'Thulio');
+    assert.ok(Array.isArray(healed.transactions) && Array.isArray(healed.recurrences) && healed.accounts.length > 0);
+    console.log('PASS [Boot 9] Returning-user cold boot with pre-populated and corrupted localStorage verified (zero TDZ/init crash)');
+    process.exit(0);
   }
 }
