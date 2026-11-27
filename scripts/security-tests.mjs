@@ -438,6 +438,8 @@ function read(rel) {
     assert.ok(htmlPop.includes('Aporte mensal sugerido'), 'Must render suggested monthly contribution');
     assert.ok(htmlPop.includes('200,00/mês'), 'Must compute exact monthly goal contribution');
     assert.ok(htmlPop.includes('(20%)'), 'Must display goal completion percentage next to current value');
+    assert.ok(htmlPop.includes('cat-icon-badge'), 'Must render Precision Stroke category icon badges instead of plain ●');
+    assert.ok(!htmlPop.includes('↗ Entradas'), 'Must render Precision Stroke SVG inflow icon instead of text ↗');
 
     // Edge cases: zero income, zero limit, over-budget, goal without deadline / past deadline
     const emptyVg = sec.getCleanEmptyState('Vazio');

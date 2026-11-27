@@ -22,6 +22,65 @@ function safeCssColor(val, fallback = '#38b6ff') {
   return /^#[0-9a-fA-F]{3,8}$/.test(s) ? s : fallback;
 }
 
+// ============================================================
+// PACOTE DE ÍCONES INTERNOS — PRECISION STROKE (1.75px)
+// ============================================================
+const PRECISION_ICONS = {
+  edit: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;margin-right:3px;"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
+  upload: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>`,
+  inflow: `<svg viewBox="0 0 24 24" fill="none" stroke="var(--green-emerald)" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="6" stroke-opacity="0.38"/><path d="M9 15 15 9"/><path d="M9.5 9H15v5.5"/></svg>`,
+  outflow: `<svg viewBox="0 0 24 24" fill="none" stroke="var(--coral-red)" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="6" stroke-opacity="0.38"/><path d="m9 9 6 6"/><path d="M15 9.5V15H9.5"/></svg>`,
+  alert: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`,
+  shieldOk: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>`,
+  info: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`,
+  repeat: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/><path d="M12 7v5l3 2"/></svg>`,
+  target: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/></svg>`,
+  trendUp: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>`,
+  trendDown: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></svg>`
+};
+
+const CATEGORY_PRECISION_SVGS = {
+  moradia: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9v11h14V9"/><path d="M9 20v-6h6v6"/></svg>`,
+  mercado: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>`,
+  delivery: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4a8 8 0 0 0-8 8h16a8 8 0 0 0-8-8Z"/><path d="M2 15h20"/><path d="M12 2v2"/></svg>`,
+  transporte: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 17h14v-5l-2-5H7l-2 5v5Z"/><circle cx="7.5" cy="17" r="2"/><circle cx="16.5" cy="17" r="2"/></svg>`,
+  saude: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.5 12.6 12 20l-7.5-7.4A5 5 0 0 1 12 5.6a5 5 0 0 1 7.5 7Z"/><path d="M8 12h2l1.5-2.5L13 14l1.5-2H16"/></svg>`,
+  lazer: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2m0 10v2m0-8v2"/></svg>`,
+  compras: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>`,
+  assinaturas: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="14" rx="3"/><polygon points="10 8.5 16 11 10 13.5 10 8.5"/><path d="M8 21h8"/></svg>`,
+  educacao: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4h6a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H2Z"/><path d="M22 4h-6a4 4 0 0 0-4 4v12a3 3 0 0 1 3-3h7Z"/></svg>`,
+  receita: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="3"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></svg>`,
+  invest: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12l4 6-10 12L2 9l4-6Z"/><path d="M2 9h20"/></svg>`,
+  default: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>`
+};
+
+function getCategoryIconSvg(cat) {
+  const id = String(cat?.id || '').toLowerCase();
+  const name = String(cat?.name || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  const key = `${id} ${name}`;
+  if (key.includes('moradia') || key.includes('casa') || key.includes('aluguel') || key.includes('condominio')) return CATEGORY_PRECISION_SVGS.moradia;
+  if (key.includes('mercado') || key.includes('feira') || key.includes('padaria')) return CATEGORY_PRECISION_SVGS.mercado;
+  if (key.includes('delivery') || key.includes('ifood') || key.includes('restaurante') || key.includes('comida') || key.includes('alimentacao')) return CATEGORY_PRECISION_SVGS.delivery;
+  if (key.includes('transporte') || key.includes('uber') || key.includes('combustivel') || key.includes('carro')) return CATEGORY_PRECISION_SVGS.transporte;
+  if (key.includes('saude') || key.includes('farmacia') || key.includes('medico') || key.includes('academia')) return CATEGORY_PRECISION_SVGS.saude;
+  if (key.includes('lazer') || key.includes('cinema') || key.includes('viagem') || key.includes('show')) return CATEGORY_PRECISION_SVGS.lazer;
+  if (key.includes('compra') || key.includes('shopping') || key.includes('roupa') || key.includes('presente')) return CATEGORY_PRECISION_SVGS.compras;
+  if (key.includes('assinatura') || key.includes('streaming') || key.includes('internet')) return CATEGORY_PRECISION_SVGS.assinaturas;
+  if (key.includes('educacao') || key.includes('curso') || key.includes('livro') || key.includes('faculdade')) return CATEGORY_PRECISION_SVGS.educacao;
+  if (key.includes('receita') || key.includes('salario') || key.includes('renda') || key.includes('entrada')) return CATEGORY_PRECISION_SVGS.receita;
+  if (key.includes('invest') || key.includes('aporte') || key.includes('patrimonio') || key.includes('reserva')) return CATEGORY_PRECISION_SVGS.invest;
+  return CATEGORY_PRECISION_SVGS.default;
+}
+
+function renderCategoryBadge(cat, sizeCls = '') {
+  const safeCol = safeCssColor(cat?.color);
+  const cls = sizeCls ? `cat-icon-badge ${sizeCls}` : 'cat-icon-badge';
+  return `<span class="${cls}" style="background:${safeCol}1f; color:${safeCol}; border:1px solid ${safeCol}42;">${getCategoryIconSvg(cat)}</span>`;
+}
+
 function getTodayISO() {
   const now = new Date();
   const y = now.getFullYear();
@@ -1515,14 +1574,14 @@ function buildMonthlyInsightsList(m) {
   if (topCat) {
     list.push({
       tone: 'amber',
-      icon: '!',
+      icon: PRECISION_ICONS.alert,
       title: `${esc(topCat.name)} concentra ${topCat.pct}% dos gastos`,
       desc: `Total de ${fmtBRL(topCat.totalCents)} registrado em ${esc(topCat.name)} neste período. Acompanhe o limite diário para equilibrar o mês.`
     });
   } else {
     list.push({
       tone: 'amber',
-      icon: '!',
+      icon: PRECISION_ICONS.alert,
       title: 'Seus gastos estão sob controle',
       desc: 'Adicione suas receitas e despesas para receber leituras automáticas do seu comportamento financeiro.'
     });
@@ -1533,7 +1592,7 @@ function buildMonthlyInsightsList(m) {
   if (m.budgetCents <= 0) {
     list.push({
       tone: 'info',
-      icon: 'i',
+      icon: PRECISION_ICONS.info,
       title: 'Defina um orçamento mensal',
       desc: `Configure seu teto no perfil para calcular o ritmo diário seguro nos próximos ${m.daysRem} ${m.daysRem === 1 ? 'dia' : 'dias'}.`
     });
@@ -1541,7 +1600,7 @@ function buildMonthlyInsightsList(m) {
     const overAbs = Math.abs(remainingBudgetCents);
     list.push({
       tone: 'danger',
-      icon: '!',
+      icon: PRECISION_ICONS.alert,
       title: `Orçamento estourado em ${fmtBRL(overAbs)}`,
       desc: m.daysRem > 0
         ? `Você passou dos ${fmtBRL(m.budgetCents)} previstos com ${m.daysRem} ${m.daysRem === 1 ? 'dia restante' : 'dias restantes'} no mês.`
@@ -1550,7 +1609,7 @@ function buildMonthlyInsightsList(m) {
   } else if (m.daysRem <= 0) {
     list.push({
       tone: 'success',
-      icon: '✓',
+      icon: PRECISION_ICONS.shieldOk,
       title: `Orçamento livre: ${fmtBRL(remainingBudgetCents)}`,
       desc: `Período encerrado dentro do orçamento mensal de ${fmtBRL(m.budgetCents)}.`
     });
@@ -1558,7 +1617,7 @@ function buildMonthlyInsightsList(m) {
     const safeDailyCents = Math.floor(remainingBudgetCents / m.daysRem);
     list.push({
       tone: 'success',
-      icon: '✓',
+      icon: PRECISION_ICONS.shieldOk,
       title: `Orçamento livre: ${fmtBRL(safeDailyCents)}/dia`,
       desc: `Para fechar dentro dos ${fmtBRL(m.budgetCents)} nos próximos ${m.daysRem} ${m.daysRem === 1 ? 'dia' : 'dias'}.`
     });
@@ -1572,7 +1631,7 @@ function buildMonthlyInsightsList(m) {
     const fixedPct = m.incomeCents > 0 ? Math.round((fixedRecOutCents / m.incomeCents) * 100) : null;
     list.push({
       tone: 'info',
-      icon: '↻',
+      icon: PRECISION_ICONS.repeat,
       title: `Custo fixo ativo: ${fmtBRL(fixedRecOutCents)}/mês`,
       desc: fixedPct !== null
         ? `Compromete ${fixedPct}% das suas entradas registradas no mês.`
@@ -1584,7 +1643,7 @@ function buildMonthlyInsightsList(m) {
     const missingReserve = Math.max(0, m.reserveGoalCents - m.reserveCurrentCents);
     list.push({
       tone: 'info',
-      icon: '◎',
+      icon: PRECISION_ICONS.target,
       title: `Reserva em ${m.reservePct}% da meta`,
       desc: `Faltam ${fmtBRL(missingReserve)} para completar sua meta de proteção de ${fmtBRL(m.reserveGoalCents)}.`
     });
@@ -1592,7 +1651,7 @@ function buildMonthlyInsightsList(m) {
     const diffPrev = m.partialResultCents - m.prevPartialResultCents;
     list.push({
       tone: diffPrev >= 0 ? 'success' : 'amber',
-      icon: diffPrev >= 0 ? '↗' : '↘',
+      icon: diffPrev >= 0 ? PRECISION_ICONS.trendUp : PRECISION_ICONS.trendDown,
       title: diffPrev >= 0
         ? `Saldo ${fmtBRL(diffPrev)} acima do mês anterior`
         : `Saldo ${fmtBRL(Math.abs(diffPrev))} abaixo do mês anterior`,
@@ -1640,9 +1699,7 @@ function renderVisaoGeral() {
         <div class="cat-bar-item" style="gap:6px;">
           <div class="cat-bar-header">
             <div class="cat-name-group">
-              <span style="width:24px; height:24px; border-radius:7px; background:${safeCol}26; color:${safeCol}; display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:700;">
-                ●
-              </span>
+              ${renderCategoryBadge({ id: d.catId, name: d.name, color: safeCol })}
               <span style="font-weight:500;">${esc(d.name)}</span>
               <span class="cat-pct-badge">${esc(d.pctLabel || (d.pct + '%'))}</span>
             </div>
@@ -1804,11 +1861,11 @@ function renderVisaoGeral() {
         <div class="partial-footer-split">
           <div class="in-out-grid">
             <div class="in-out-item">
-              <span class="in-out-label">↗ Entradas</span>
+              <span class="in-out-label">${PRECISION_ICONS.inflow}<span>Entradas</span></span>
               <span class="in-out-val sensitive-val">${fmtBRL(m.incomeCents)}</span>
             </div>
             <div class="in-out-item">
-              <span class="in-out-label">↘ Saídas</span>
+              <span class="in-out-label">${PRECISION_ICONS.outflow}<span>Saídas</span></span>
               <span class="in-out-val sensitive-val">${fmtBRL(m.expenseCents)}</span>
             </div>
           </div>
@@ -1936,7 +1993,7 @@ function renderVisaoGeralRow4(m, invSummaryArg = null) {
         return `
           <div class="recorrencia-mini-row">
             <span style="display:inline-flex; align-items:center; gap:8px;">
-              <span class="cat-dot" style="background:${safeCssColor(cat.color)};"></span>
+              ${renderCategoryBadge(cat, 'is-sm')}
               <span style="font-weight:500;">${esc(r.description)}</span>
             </span>
             <span>
@@ -2471,8 +2528,8 @@ function renderTransacoesView() {
               ${t.tag ? `<span class="tag-pill">#${esc(t.tag)}</span>` : ''}
             </td>
             <td data-value="${esc(cat.name)}">
-              <span style="display:inline-flex; align-items:center; gap:6px;">
-                <span class="cat-dot" style="background:${safeCssColor(cat.color)}"></span>
+              <span style="display:inline-flex; align-items:center; gap:7px;">
+                ${renderCategoryBadge(cat, 'is-sm')}
                 ${esc(cat.name)}
               </span>
             </td>
@@ -2486,7 +2543,7 @@ function renderTransacoesView() {
               ${t.type === 'expense' ? '-' : '+'}${fmtBRL(t.amountCents)}
             </td>
             <td style="text-align:right; white-space:nowrap;">
-              <button type="button" class="btn-icon-edit" data-edit-tx="${esc(t.id)}">✎ Editar</button>
+              <button type="button" class="btn-icon-edit" data-edit-tx="${esc(t.id)}">${PRECISION_ICONS.edit}Editar</button>
               <button type="button" class="btn-danger-ghost" data-del-tx="${esc(t.id)}">Excluir</button>
             </td>
           </tr>
@@ -2502,7 +2559,7 @@ function renderTransacoesView() {
         </div>
         <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
           <button type="button" class="btn-secondary" id="btn-import-statement" title="Importar fatura ou extrato em CSV, Markdown (.md), PDF ou Imagem">
-            ↑ Importar Fatura (CSV/MD/PDF/Foto)
+            ${PRECISION_ICONS.upload}Importar Fatura (CSV/MD/PDF/Foto)
           </button>
           <button type="button" class="btn-primary" id="btn-new-tx-page">+ Lançamento Rápido</button>
         </div>
@@ -4009,13 +4066,13 @@ function renderRecorrenciasView() {
       <tr>
         <td>Todo dia <b>${r.day}</b></td>
         <td style="font-weight:600;">${esc(r.description)}</td>
-        <td><span class="cat-dot" style="background:${safeCssColor(cat.color)}; display:inline-block; margin-right:6px;"></span>${esc(cat.name)}</td>
+        <td><span style="display:inline-flex; align-items:center; gap:7px;">${renderCategoryBadge(cat, 'is-sm')}${esc(cat.name)}</span></td>
         <td style="color:var(--text-secondary);">${esc(acc.name)}</td>
         <td>${statusPill}</td>
         <td class="sensitive-val" style="font-weight:700;">${fmtBRL(r.amountCents)}</td>
         <td style="text-align:right;">
           <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:nowrap;">
-            <button class="btn-icon-edit" data-edit-rec="${esc(r.id)}">✎ Editar</button>
+            <button class="btn-icon-edit" data-edit-rec="${esc(r.id)}">${PRECISION_ICONS.edit}Editar</button>
             <button class="btn-secondary" data-toggle-rec="${esc(r.id)}">${r.active ? 'Pausar' : 'Ativar Automático'}</button>
             <button class="btn-danger-ghost" data-del-rec="${esc(r.id)}">Remover</button>
           </div>
@@ -4208,7 +4265,7 @@ function renderFluxoCaixaView() {
         <span style="font-size:11.5px; color:var(--text-muted);">(cai automaticamente todo dia ${state.profile.salaryDay || 5})</span>
       </div>
       <button class="btn-primary" id="btn-config-salary" style="padding:7px 14px; font-size:12px;">
-        ${salaryCents > 0 ? '✎ Editar Salário' : '+ Definir Salário'}
+        ${salaryCents > 0 ? `${PRECISION_ICONS.edit}Editar Salário` : '+ Definir Salário'}
       </button>
     </div>
 
@@ -4370,7 +4427,7 @@ function renderFaturasView() {
             <div class="fatura-top-right">
               <span class="status-pill ${meta.status}">${statusLabels[meta.status] || 'Aberta'}</span>
               <button class="btn-icon-edit" data-edit-invoice="${esc(acc.id)}" title="Editar fatura">
-                ✎ Editar
+                ${PRECISION_ICONS.edit}Editar
               </button>
             </div>
           </div>
@@ -4399,7 +4456,7 @@ function renderFaturasView() {
         <div class="fatura-card-actions" style="flex-wrap:wrap;">
           <div style="display:flex; gap:6px; flex-wrap:wrap;">
             <button class="btn-secondary" data-add-tx-account="${acc.id}">+ Lançar</button>
-            <button class="btn-secondary" data-import-invoice-acc="${acc.id}" title="Fazer upload de fatura CSV, Markdown (.md), PDF ou Foto para este cartão">↑ Importar Fatura</button>
+            <button class="btn-secondary" data-import-invoice-acc="${acc.id}" title="Fazer upload de fatura CSV, Markdown (.md), PDF ou Foto para este cartão">${PRECISION_ICONS.upload}Importar Fatura</button>
           </div>
           <button class="btn-primary" data-toggle-paid-invoice="${acc.id}" data-invoice-total="${spentCents}" style="padding:7px 14px; font-size:12px;">
             ${meta.status === 'paid' ? 'Reabrir Fatura' : 'Pagar Fatura (Debitar Conta)'}
@@ -4418,7 +4475,7 @@ function renderFaturasView() {
         <p class="vs-prev">Compras após o dia de fechamento entram automaticamente na fatura do mês seguinte.</p>
       </div>
       <div style="display:flex; gap:10px; flex-wrap:wrap;">
-        <button class="btn-secondary" id="btn-import-invoice-top">↑ Importar Fatura (CSV/MD/PDF/Foto)</button>
+        <button class="btn-secondary" id="btn-import-invoice-top">${PRECISION_ICONS.upload}Importar Fatura (CSV/MD/PDF/Foto)</button>
         <button class="btn-primary" id="btn-new-invoice-card">+ Novo Cartão / Fatura</button>
       </div>
     </div>
@@ -4600,13 +4657,13 @@ function renderCategoriasView() {
       <div class="card" style="${cat.archived ? 'opacity:0.65;' : ''}">
         <div class="card-header-row" style="gap:10px;">
           <div style="display:flex; align-items:center; gap:8px; min-width:0; flex:1;">
-            <span class="cat-dot" style="background:${safeCatCol}; width:10px; height:10px; flex-shrink:0;"></span>
+            ${renderCategoryBadge(cat, 'is-lg')}
             <span style="font-weight:600; overflow:hidden; text-overflow:ellipsis;">${esc(cat.name)}</span>
             ${cat.archived ? `<span class="tag-pill">Arquivada</span>` : ''}
           </div>
           <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
             <span class="cat-pct-badge sensitive-val">${fmtBRL(spentCents)}</span>
-            <button class="btn-icon-edit" data-edit-cat="${esc(cat.id)}">✎ Editar</button>
+            <button class="btn-icon-edit" data-edit-cat="${esc(cat.id)}">${PRECISION_ICONS.edit}Editar</button>
           </div>
         </div>
         <div class="vs-prev sensitive-val">Teto mensal: ${fmtBRL(budgetCents)}</div>
@@ -4885,7 +4942,7 @@ function renderPatrimonioView() {
             </td>
             <td>
               <button class="cdb-badge" data-quick-cdb="${esc(a.id)}" title="Clique para alterar a % do CDI / CDB">
-                ${cdbPct}% CDI ✎
+                ${cdbPct}% CDI ${PRECISION_ICONS.edit}
               </button>
               ${tierNote}
             </td>
@@ -5607,7 +5664,7 @@ function renderContasView() {
           <span style="font-weight:600;">${esc(a.name)}</span>
           <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
             <span class="cat-pct-badge">${esc(a.type)}</span>
-            <button class="btn-icon-edit" data-edit-acc="${esc(a.id)}">✎ Editar</button>
+            <button class="btn-icon-edit" data-edit-acc="${esc(a.id)}">${PRECISION_ICONS.edit}Editar</button>
           </div>
         </div>
         <div class="big-currency sensitive-val" style="font-size:22px; margin-top:8px;">
@@ -6114,12 +6171,15 @@ function renderQuickCategoryChips(selectedId) {
   const activeId = selectedId || (sortedCats[0]?.id || '');
   document.getElementById('tx-category').value = activeId;
 
-  chipsWrap.innerHTML = sortedCats.map(c => `
-    <button type="button" class="cat-chip ${c.id === activeId ? 'selected' : ''}" data-quick-cat="${esc(c.id)}">
-      <span class="cat-dot" style="background:${safeCssColor(c.color)};" aria-hidden="true"></span>
-      ${esc(c.name)}
-    </button>
-  `).join('');
+  chipsWrap.innerHTML = sortedCats.map(c => {
+    const safeCol = safeCssColor(c.color);
+    return `
+      <button type="button" class="cat-chip ${c.id === activeId ? 'selected' : ''}" data-quick-cat="${esc(c.id)}">
+        <span style="width:14px; height:14px; display:inline-flex; align-items:center; justify-content:center; color:${safeCol}; flex-shrink:0;" aria-hidden="true">${getCategoryIconSvg(c)}</span>
+        ${esc(c.name)}
+      </button>
+    `;
+  }).join('');
 
   chipsWrap.querySelectorAll('[data-quick-cat]').forEach(chip => {
     chip.addEventListener('click', () => {
