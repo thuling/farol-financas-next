@@ -1794,4 +1794,48 @@ export const FAROL_SHELL_HTML = `<!-- ==================== TELA INICIAL DE LOGIN
     <button type="button" class="btn-primary" id="btn-undo-batch" style="padding:5px 12px; font-size:12px;">Desfazer</button>
   </div>
 
+  <!-- ==================== PRODUCT TOUR / WALKTHROUGH PASSO A PASSO ==================== -->
+  <div class="tour-backdrop-layer is-hidden" id="tour-backdrop-layer" aria-hidden="true">
+    <div class="tour-spotlight-box" id="tour-spotlight-box"></div>
+  </div>
+
+  <dialog id="farol-tour-popover" popover="manual" role="dialog" aria-labelledby="tour-step-title" aria-describedby="tour-step-desc">
+    <div class="tour-card-inner">
+      <div class="tour-arrow" id="tour-arrow" data-dir="top" aria-hidden="true"></div>
+
+      <div class="tour-header-row">
+        <span class="tour-step-pill" id="tour-step-counter">PASSO 1 DE 9 · MENU LATERAL</span>
+        <button type="button" class="tour-skip-top-btn" id="tour-btn-skip-top" popovertarget="farol-tour-popover" popovertargetaction="hide">
+          Pular tour ✕
+        </button>
+      </div>
+
+      <h2 class="tour-title" id="tour-step-title">1. Navegação Principal &amp; Estratégica</h2>
+      <p class="tour-desc" id="tour-step-desc">
+        No menu lateral você alterna entre o controle do dia a dia e o planejamento de longo prazo.
+      </p>
+
+      <div class="tour-tip-box" id="tour-step-tip">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+        <span id="tour-step-tip-text">Dica: Você também pode navegar usando as setas ← e → do teclado.</span>
+      </div>
+
+      <div class="tour-footer-row">
+        <div class="tour-dots" id="tour-dots-container" role="tablist" aria-label="Passos do tour"></div>
+
+        <div class="tour-nav-btns">
+          <button type="button" class="tour-btn-skip" id="tour-btn-skip-footer" popovertarget="farol-tour-popover" popovertargetaction="hide">
+            Pular
+          </button>
+          <button type="button" class="tour-btn-prev" id="tour-btn-prev">
+            ← Anterior
+          </button>
+          <button type="button" class="tour-btn-next" id="tour-btn-next" data-tour-primary>
+            Próximo →
+          </button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
   <div id="chart-tooltip" role="tooltip"></div>`;

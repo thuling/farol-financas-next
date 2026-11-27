@@ -531,6 +531,23 @@ function read(rel) {
     assert.equal(healed.profile.name, 'Thulio');
     assert.ok(Array.isArray(healed.transactions) && Array.isArray(healed.recurrences) && healed.accounts.length > 0);
     console.log('PASS [Boot 9] Returning-user cold boot with pre-populated and corrupted localStorage verified (zero TDZ/init crash)');
+
+    // -------------------------------------------------------------------------
+    // 10. Product Tour (9 steps, no permanent topbar button, Next/Prev/Skip)
+    // -------------------------------------------------------------------------
+    const shellSrc = fs.readFileSync(path.join(ROOT, 'src/lib/shell-html.ts'), 'utf8');
+    assert.ok(shellSrc.includes('id="farol-tour-popover"'), 'Shell HTML must include #farol-tour-popover dialog');
+    assert.ok(shellSrc.includes('id="tour-spotlight-box"'), 'Shell HTML must include #tour-spotlight-box');
+    assert.ok(shellSrc.includes('id="tour-btn-next"') && shellSrc.includes('id="tour-btn-prev"') && shellSrc.includes('id="tour-btn-skip-footer"'), 'Shell HTML must include Próximo, Anterior, and Pular buttons');
+    assert.ok(!shellSrc.includes('class="tour-trigger-pill"'), 'Topbar must NOT have a permanent Tour Guiado button');
+
+    new vm.Script('globalThis.__tourSteps = FAROL_PRODUCT_TOUR_STEPS;').runInContext(bootCtx);
+    assert.equal(bootCtx.__tourSteps.length, 9, 'Complete Product Tour must have all 9 steps');
+    assert.equal(bootCtx.__tourSteps[0].view, 'visao-geral');
+    assert.equal(bootCtx.__tourSteps[5].view, 'transacoes');
+    assert.equal(bootCtx.__tourSteps[7].selector, '#tour-tx-thead');
+    assert.equal(bootCtx.__tourSteps[8].selector, '#profile-trigger');
+    console.log('PASS [Feature 10] Complete 9-step Product Tour structure, absence of permanent topbar button, and target selectors verified');
     process.exit(0);
   }
 }
