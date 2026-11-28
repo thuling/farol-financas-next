@@ -57,6 +57,10 @@ const farolFormatters = loadTsModule('src/lib/farol/formatters.ts', farolModuleC
 const farolInstallments = loadTsModule('src/lib/farol/installments.ts', farolModuleCache);
 const farolInvoiceParser = loadTsModule('src/lib/farol/invoice-parser.ts', farolModuleCache);
 const farolMetrics = loadTsModule('src/lib/farol/metrics.ts', farolModuleCache);
+const farolIcons = loadTsModule('src/lib/farol/icons.ts', farolModuleCache);
+const farolCharts = loadTsModule('src/lib/farol/charts.ts', farolModuleCache);
+const farolAnalytics = loadTsModule('src/lib/farol/analytics.ts', farolModuleCache);
+const farolDialogs = loadTsModule('src/lib/farol/dialogs.ts', farolModuleCache);
 const farolTour = loadTsModule('src/lib/farol/tour.ts', farolModuleCache);
 const farolAuth = loadTsModule('src/lib/farol/auth.ts', farolModuleCache);
 
@@ -66,6 +70,10 @@ function attachFarolEngineGlobals(vmCtx) {
   const inst = loadTsModule('src/lib/farol/installments.ts', ctxCache, vmCtx);
   const inv = loadTsModule('src/lib/farol/invoice-parser.ts', ctxCache, vmCtx);
   const met = loadTsModule('src/lib/farol/metrics.ts', ctxCache, vmCtx);
+  const icons = loadTsModule('src/lib/farol/icons.ts', ctxCache, vmCtx);
+  const charts = loadTsModule('src/lib/farol/charts.ts', ctxCache, vmCtx);
+  const analytics = loadTsModule('src/lib/farol/analytics.ts', ctxCache, vmCtx);
+  const dialogs = loadTsModule('src/lib/farol/dialogs.ts', ctxCache, vmCtx);
   const tour = loadTsModule('src/lib/farol/tour.ts', ctxCache, vmCtx);
   const auth = loadTsModule('src/lib/farol/auth.ts', ctxCache, vmCtx);
   Object.assign(vmCtx, {
@@ -88,6 +96,21 @@ function attachFarolEngineGlobals(vmCtx) {
     computeMonthMetricsPure: met.computeMonthMetrics,
     computeVisaoGeralInvoiceSummaryPure: met.computeVisaoGeralInvoiceSummary,
     buildMonthlyInsightsListPure: met.buildMonthlyInsightsList,
+    PRECISION_ICONS: icons.PRECISION_ICONS,
+    CATEGORY_PRECISION_SVGS: icons.CATEGORY_PRECISION_SVGS,
+    getCategoryIconSvg: icons.getCategoryIconSvg,
+    renderCategoryBadge: icons.renderCategoryBadge,
+    buildSmoothSvgPath: charts.buildSmoothSvgPath,
+    buildMonthlySpendSvg: charts.buildMonthlySpendSvg,
+    buildDonutSvg: charts.buildDonutSvg,
+    buildReserveRingSvg: charts.buildReserveRingSvg,
+    buildAccumulatedAreaSvg: charts.buildAccumulatedAreaSvg,
+    fmtAxisCompactBRL: charts.fmtAxisCompactBRL,
+    buildTopRoundedBarPath: charts.buildTopRoundedBarPath,
+    createAnalyticsTracker: analytics.createAnalyticsTracker,
+    openFarolModalBase: dialogs.openFarolModal,
+    closeFarolModal: dialogs.closeFarolModal,
+    setupFarolDialogs: dialogs.setupFarolDialogs,
     FAROL_PRODUCT_TOUR_STEPS: tour.FAROL_PRODUCT_TOUR_STEPS,
     createProductTourController: tour.createProductTourController,
     AUTH_SESSION_STORAGE_KEY: auth.AUTH_SESSION_STORAGE_KEY,
@@ -667,8 +690,8 @@ function toRunnableEngineScript(engineSrc) {
     assert.ok(shellSrc.includes('data-toggle-password="reset-new-password"'), 'Reset new password must include eye toggle');
     assert.ok(shellSrc.includes('data-toggle-password="reset-confirm-password"'), 'Reset confirm password must include eye toggle');
 
-    const cssSrc = read('src/app/globals.css');
-    assert.ok(cssSrc.includes('.password-toggle-btn') && cssSrc.includes('::-ms-reveal'), 'CSS must style password eye toggle and suppress duplicate native Edge reveal icon');
+    const authCssSrc = read('src/app/styles/auth.css');
+    assert.ok(authCssSrc.includes('.password-toggle-btn') && authCssSrc.includes('::-ms-reveal'), 'Auth CSS must style password eye toggle and suppress duplicate native Edge reveal icon');
 
     // Runtime verification of password visibility toggle and forgot/reset UI transitions
     const pwElements = new Map();
@@ -917,6 +940,47 @@ function toRunnableEngineScript(engineSrc) {
     assert.equal(typeof farolAuth.createAuthController, 'function');
     assert.equal(typeof farolAuth.setPasswordFieldVisibility, 'function');
     console.log('PASS [Feature 13] Direct unit tests for Stage 2 TS modules (metrics, tour, auth) verified');
+
+    // -------------------------------------------------------------------------
+    // 14. Stage 3 Modularization (icons, charts, analytics, dialogs, CSS split) & Dead Code Cleanup
+    // -------------------------------------------------------------------------
+    assert.ok(engineSrc.includes("from './farol/icons'"), 'farol-engine.js must import farol/icons');
+    assert.ok(engineSrc.includes("from './farol/charts'"), 'farol-engine.js must import farol/charts');
+    assert.ok(engineSrc.includes("from './farol/analytics'"), 'farol-engine.js must import farol/analytics');
+    assert.ok(engineSrc.includes("from './farol/dialogs'"), 'farol-engine.js must import farol/dialogs');
+
+    // 14a. icons.ts
+    assert.ok(farolIcons.getCategoryIconSvg({ id: 'cat-moradia', name: 'Moradia' }).includes('<svg'));
+    const badgeHtml = farolIcons.renderCategoryBadge({ id: 'cat-mercado', name: 'Mercado', color: 'bad(css)' }, 'is-sm');
+    assert.ok(badgeHtml.includes('cat-icon-badge is-sm') && !badgeHtml.includes('bad(css)'), 'Badge must sanitize CSS color');
+
+    // 14b. charts.ts
+    assert.equal(farolCharts.fmtAxisCompactBRL(250000), 'R$ 2,5k');
+    assert.equal(farolCharts.fmtAxisCompactBRL(-50000), '-R$ 500');
+    assert.equal(farolCharts.fmtAxisCompactBRL(0), 'R$ 0');
+    assert.ok(farolCharts.buildTopRoundedBarPath(10, 20, 30, 40).startsWith('M 10.0 60.0'));
+    assert.ok(farolCharts.buildMonthlySpendSvg(15000, [{ type: 'expense', date: '2026-11-10', amountCents: 15000 }], 30).includes('<svg'));
+    assert.ok(farolCharts.buildDonutSvg([{ catId: 'c1', name: 'Mercado', color: '#38b6ff', budgetCents: 0, prevCents: 0, totalCents: 10000, pct: 100, pctLabel: '100%' }], 10000).includes('donut-slice-hover'));
+    assert.ok(farolCharts.buildReserveRingSvg(50).includes('stroke-dasharray='));
+
+    // 14c. analytics.ts & dialogs.ts
+    assert.equal(farolAnalytics.describeClickableTarget({ id: 'quick-add-btn', getAttribute: () => null }), '#quick-add-btn');
+    assert.equal(farolAnalytics.describeClickableTarget({ dataset: { tab: 'faturas' }, getAttribute: () => null }), 'tab:faturas');
+    assert.equal(typeof farolDialogs.openFarolModal, 'function');
+    assert.equal(typeof farolDialogs.setupFarolDialogs, 'function');
+
+    // 14d. Modularized CSS manifest & removal of verified dead CSS selectors
+    const globalsManifest = read('src/app/globals.css');
+    const expectedStyleSheets = ['tokens.css', 'layout.css', 'dashboard.css', 'modals.css', 'auth.css', 'responsive.css', 'admin.css', 'tour.css'];
+    let allSplitCss = '';
+    for (const sheet of expectedStyleSheets) {
+      assert.ok(globalsManifest.includes(`@import "./styles/${sheet}";`), `globals.css must import ./styles/${sheet}`);
+      allSplitCss += read(`src/app/styles/${sheet}`) + '\n';
+    }
+    assert.ok(!allSplitCss.includes('.search-input'), 'Dead CSS rule .search-input must be removed');
+    assert.ok(!allSplitCss.includes('.quick-amount-hero'), 'Dead CSS rule .quick-amount-hero must be removed');
+    assert.ok(!allSplitCss.includes('.use-css-anchor'), 'Dead CSS rule .use-css-anchor must be removed');
+    console.log('PASS [Feature 14] Stage 3 TS modules (icons, charts, analytics, dialogs), 8-file CSS split, and dead code cleanup verified');
     process.exit(0);
   }
 }

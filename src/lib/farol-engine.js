@@ -2,7 +2,6 @@
    FAROL FINANÇAS — Motor Completo (Centavos Inteiros & Etapa 1)
    ============================================================ */
 import {
-  ISO_DATE_RE,
   YM_RE,
   esc,
   safeCssColor,
@@ -13,23 +12,18 @@ import {
   fmtDateBR,
   fmtMonthLabel,
   addMonthsYM,
-  monthDiffYM,
   normalizeTxText,
   clampIsoDate,
   clampDayToYM,
 } from './farol/formatters';
 import {
-  INSTALLMENT_DESC_RE,
   parseInstallmentMeta,
   hasDuplicateInstallmentTx,
-  computeInvoiceYMWithAccounts,
   sanitizeWorkspaceInstallments,
 } from './farol/installments';
 import {
   matchCategoryByRules as matchCategoryByRulesPure,
   classifyMerchantLocally as classifyMerchantLocallyPure,
-  cleanBrazilianAmountToFloat,
-  extractInstallmentInfoFromTitle,
   detectEntryKind,
   parseInvoiceCSVOrOFXLocally as parseInvoiceCSVOrOFXLocallyPure,
   parseInvoiceMarkdownLocally as parseInvoiceMarkdownLocallyPure,
@@ -41,86 +35,40 @@ import {
   getCategoriesSortedByUsage as getCategoriesSortedByUsagePure,
   getMonthTransactions as getMonthTransactionsPure,
   getCalendarMonthInfo as getCalendarMonthInfoPure,
-  isInternalTransferTx,
   computeMonthMetrics as computeMonthMetricsPure,
   computeVisaoGeralInvoiceSummary as computeVisaoGeralInvoiceSummaryPure,
   buildMonthlyInsightsList as buildMonthlyInsightsListPure,
 } from './farol/metrics';
 import {
-  FAROL_PRODUCT_TOUR_STEPS,
+  PRECISION_ICONS,
+  renderCategoryBadge,
+} from './farol/icons';
+import {
+  buildMonthlySpendSvg,
+  buildDonutSvg,
+  buildReserveRingSvg,
+  buildAccumulatedAreaSvg,
+  fmtAxisCompactBRL,
+  buildTopRoundedBarPath,
+} from './farol/charts';
+import {
+  createAnalyticsTracker,
+} from './farol/analytics';
+import {
+  openFarolModal as openFarolModalBase,
+  closeFarolModal,
+  setupFarolDialogs,
+} from './farol/dialogs';
+import {
   createProductTourController,
 } from './farol/tour';
 import {
-  AUTH_SESSION_STORAGE_KEY,
-  setPasswordFieldVisibility,
-  resetAllPasswordVisibilities,
-  bindPasswordVisibilityToggles,
-  isLocalTourPreviewMode,
   createAuthController,
 } from './farol/auth';
 
 const USERS_INDEX_KEY = 'farol_financas_users_v2';
 const LEGACY_V1_KEY = 'farol_financas_state_v1';
 let syncTimer = null;
-
-// ============================================================
-// PACOTE DE ÍCONES INTERNOS — PRECISION STROKE (1.75px)
-// ============================================================
-const PRECISION_ICONS = {
-  edit: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;margin-right:3px;"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
-  upload: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>`,
-  inflow: `<svg viewBox="0 0 24 24" fill="none" stroke="var(--green-emerald)" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="6" stroke-opacity="0.38"/><path d="M9 15 15 9"/><path d="M9.5 9H15v5.5"/></svg>`,
-  outflow: `<svg viewBox="0 0 24 24" fill="none" stroke="var(--coral-red)" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="6" stroke-opacity="0.38"/><path d="m9 9 6 6"/><path d="M15 9.5V15H9.5"/></svg>`,
-  alert: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`,
-  shieldOk: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>`,
-  info: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`,
-  repeat: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/><path d="M12 7v5l3 2"/></svg>`,
-  target: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/></svg>`,
-  trendUp: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>`,
-  trendDown: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></svg>`
-};
-
-const CATEGORY_PRECISION_SVGS = {
-  moradia: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9v11h14V9"/><path d="M9 20v-6h6v6"/></svg>`,
-  mercado: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>`,
-  delivery: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4a8 8 0 0 0-8 8h16a8 8 0 0 0-8-8Z"/><path d="M2 15h20"/><path d="M12 2v2"/></svg>`,
-  transporte: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 17h14v-5l-2-5H7l-2 5v5Z"/><circle cx="7.5" cy="17" r="2"/><circle cx="16.5" cy="17" r="2"/></svg>`,
-  saude: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.5 12.6 12 20l-7.5-7.4A5 5 0 0 1 12 5.6a5 5 0 0 1 7.5 7Z"/><path d="M8 12h2l1.5-2.5L13 14l1.5-2H16"/></svg>`,
-  lazer: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2m0 10v2m0-8v2"/></svg>`,
-  compras: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>`,
-  assinaturas: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="14" rx="3"/><polygon points="10 8.5 16 11 10 13.5 10 8.5"/><path d="M8 21h8"/></svg>`,
-  educacao: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4h6a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H2Z"/><path d="M22 4h-6a4 4 0 0 0-4 4v12a3 3 0 0 1 3-3h7Z"/></svg>`,
-  receita: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="3"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></svg>`,
-  invest: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12l4 6-10 12L2 9l4-6Z"/><path d="M2 9h20"/></svg>`,
-  default: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>`
-};
-
-function getCategoryIconSvg(cat) {
-  const id = String(cat?.id || '').toLowerCase();
-  const name = String(cat?.name || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
-  const key = `${id} ${name}`;
-  if (key.includes('moradia') || key.includes('casa') || key.includes('aluguel') || key.includes('condominio')) return CATEGORY_PRECISION_SVGS.moradia;
-  if (key.includes('mercado') || key.includes('feira') || key.includes('padaria')) return CATEGORY_PRECISION_SVGS.mercado;
-  if (key.includes('delivery') || key.includes('ifood') || key.includes('restaurante') || key.includes('comida') || key.includes('alimentacao')) return CATEGORY_PRECISION_SVGS.delivery;
-  if (key.includes('transporte') || key.includes('uber') || key.includes('combustivel') || key.includes('carro')) return CATEGORY_PRECISION_SVGS.transporte;
-  if (key.includes('saude') || key.includes('farmacia') || key.includes('medico') || key.includes('academia')) return CATEGORY_PRECISION_SVGS.saude;
-  if (key.includes('lazer') || key.includes('cinema') || key.includes('viagem') || key.includes('show')) return CATEGORY_PRECISION_SVGS.lazer;
-  if (key.includes('compra') || key.includes('shopping') || key.includes('roupa') || key.includes('presente')) return CATEGORY_PRECISION_SVGS.compras;
-  if (key.includes('assinatura') || key.includes('streaming') || key.includes('internet')) return CATEGORY_PRECISION_SVGS.assinaturas;
-  if (key.includes('educacao') || key.includes('curso') || key.includes('livro') || key.includes('faculdade')) return CATEGORY_PRECISION_SVGS.educacao;
-  if (key.includes('receita') || key.includes('salario') || key.includes('renda') || key.includes('entrada')) return CATEGORY_PRECISION_SVGS.receita;
-  if (key.includes('invest') || key.includes('aporte') || key.includes('patrimonio') || key.includes('reserva')) return CATEGORY_PRECISION_SVGS.invest;
-  return CATEGORY_PRECISION_SVGS.default;
-}
-
-function renderCategoryBadge(cat, sizeCls = '') {
-  const safeCol = safeCssColor(cat?.color);
-  const cls = sizeCls ? `cat-icon-badge ${sizeCls}` : 'cat-icon-badge';
-  return `<span class="${cls}" style="background:${safeCol}1f; color:${safeCol}; border:1px solid ${safeCol}42;">${getCategoryIconSvg(cat)}</span>`;
-}
 
 function getDefaultDateForSelectedMonth() {
   const today = getTodayISO();
@@ -1389,173 +1337,7 @@ function bindChartTooltips() {
   });
 }
 
-function buildSmoothSvgPath(pts) {
-  if (!pts || pts.length === 0) return '';
-  if (pts.length === 1) return `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
-  let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[i];
-    const p1 = pts[i + 1];
-    const midX = (p0.x + p1.x) / 2;
-    d += ` C ${midX.toFixed(1)} ${p0.y.toFixed(1)}, ${midX.toFixed(1)} ${p1.y.toFixed(1)}, ${p1.x.toFixed(1)} ${p1.y.toFixed(1)}`;
-  }
-  return d;
-}
-
-function buildMonthlySpendSvg(expenseCents, txs = [], daysInMonth = 30) {
-  const numBuckets = 15;
-  const buckets = Array.from({ length: numBuckets }, (_, i) => {
-    const day = Math.min(daysInMonth, Math.max(1, Math.round(1 + (i / (numBuckets - 1)) * (daysInMonth - 1))));
-    const cumCents = txs
-      .filter(t => t.type === 'expense' && parseInt((t.date || '').split('-')[2] || '1', 10) <= day)
-      .reduce((s, t) => s + (Number(t.amountCents) || 0), 0);
-    return { day, cumCents };
-  });
-  const maxCum = Math.max(expenseCents, ...buckets.map(b => b.cumCents), 100);
-  const hasSpend = expenseCents > 0;
-
-  const pts = buckets.map((b, idx) => {
-    const x = 4 + (idx / (numBuckets - 1)) * 284;
-    const y = hasSpend ? (56 - (b.cumCents / maxCum) * 40) : 56;
-    return { x, y, day: b.day, cumCents: b.cumCents };
-  });
-
-  const pathLine = buildSmoothSvgPath(pts);
-  const pathArea = `${pathLine} L 288 68 L 4 68 Z`;
-  const endY = pts[pts.length - 1].y;
-
-  const zones = pts.map((p, idx) => {
-    const x = idx * (296 / numBuckets);
-    const w = 296 / numBuckets;
-    return `<rect x="${x.toFixed(1)}" y="0" width="${w.toFixed(1)}" height="72" fill="transparent"
-      class="chart-hover-zone"
-      data-tip-title="Até dia ${p.day} (acumulado)"
-      data-tip-val="${fmtBRL(p.cumCents)}" />`;
-  }).join('');
-
-  return `
-    <svg width="100%" viewBox="0 0 296 72" style="display:block; height:auto; max-height:80px;">
-      <defs>
-        <linearGradient id="coralArea" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#ffffff" stop-opacity="0.32"/>
-          <stop offset="100%" stop-color="#ffffff" stop-opacity="0.02"/>
-        </linearGradient>
-      </defs>
-      <line x1="0" y1="16" x2="296" y2="16" stroke="rgba(255,255,255,0.16)" stroke-width="1"/>
-      <line x1="0" y1="36" x2="296" y2="36" stroke="rgba(255,255,255,0.16)" stroke-width="1"/>
-      <line x1="0" y1="56" x2="296" y2="56" stroke="rgba(255,255,255,0.16)" stroke-width="1"/>
-      <path d="${pathArea}" fill="url(#coralArea)"/>
-      <path d="${pathLine}" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" class="anim-spark-draw"/>
-      <circle cx="288" cy="${endY.toFixed(1)}" r="4.5" fill="#bef264" stroke="#0d6efd" stroke-width="1.8"/>
-      ${zones}
-    </svg>
-  `;
-}
-
-function buildDonutSvg(distribution, totalExpenseCents) {
-  const radius = 56;
-  const circumference = 2 * Math.PI * radius;
-
-  if (!totalExpenseCents || distribution.length === 0) {
-    return `
-      <svg width="146" height="146" viewBox="0 0 146 146">
-        <circle cx="73" cy="73" r="${radius}" fill="none" stroke="var(--ring-track, rgba(15,35,50,0.12))" stroke-width="18"
-          class="donut-slice-hover" data-tip-title="Sem gastos" data-tip-val="R$ 0,00 (0%)"/>
-      </svg>
-    `;
-  }
-
-  let offset = 0;
-  const segments = distribution.map(d => {
-    const frac = d.totalCents / totalExpenseCents;
-    const dash = frac * circumference;
-    const seg = `<circle cx="73" cy="73" r="${radius}" fill="none" stroke="${safeCssColor(d.color)}" stroke-width="18"
-      class="donut-slice-hover"
-      data-tip-title="${esc(d.name)} (${d.pct}%)"
-      data-tip-val="${fmtBRL(d.totalCents)}"
-      stroke-dasharray="${dash} ${circumference - dash}"
-      stroke-dashoffset="${-offset}"
-      transform="rotate(-90 73 73)" />`;
-    offset += dash;
-    return seg;
-  }).join('');
-
-  return `
-    <svg width="146" height="146" viewBox="0 0 146 146" class="anim-donut-in">
-      <circle cx="73" cy="73" r="${radius}" fill="none" stroke="var(--ring-track, rgba(15,35,50,0.08))" stroke-width="18"/>
-      ${segments}
-      <line x1="73" y1="8" x2="73" y2="27" stroke="var(--bg-card-solid, #ffffff)" stroke-width="2.5" style="pointer-events:none;"/>
-    </svg>
-  `;
-}
-
-function buildReserveRingSvg(pct) {
-  const r = 31;
-  const c = 2 * Math.PI * r;
-  const dash = (pct / 100) * c;
-  return `
-    <svg width="78" height="78" viewBox="0 0 78 78" class="anim-donut-in">
-      <circle cx="39" cy="39" r="${r}" fill="none" stroke="var(--ring-track, rgba(15,35,50,0.12))" stroke-width="7"/>
-      <circle cx="39" cy="39" r="${r}" fill="none" stroke="#0d6efd" stroke-width="7"
-        stroke-dasharray="${dash} ${c - dash}" transform="rotate(-90 39 39)" stroke-linecap="round"/>
-      <circle cx="39" cy="8" r="3.8" fill="#0d6efd"/>
-    </svg>
-  `;
-}
-
-function buildAccumulatedAreaSvg(expenseCents, mode, partialResultCents = 0, txs = [], daysInMonth = 30) {
-  const color = mode === 'saldo' ? '#49b6eb' : '#f16364';
-  const labelPrefix = mode === 'saldo' ? 'Saldo' : mode === 'por-dia' ? 'Média/dia' : 'Acumulado';
-
-  const numSteps = 10;
-  const series = Array.from({ length: numSteps }, (_, idx) => {
-    const dayEnd = Math.min(daysInMonth, Math.max(1, Math.round(1 + (idx / (numSteps - 1)) * (daysInMonth - 1))));
-    const expUntil = txs
-      .filter(t => t.type === 'expense' && parseInt((t.date || '').split('-')[2] || '1', 10) <= dayEnd)
-      .reduce((s, t) => s + (Number(t.amountCents) || 0), 0);
-    const incUntil = txs
-      .filter(t => t.type === 'income' && parseInt((t.date || '').split('-')[2] || '1', 10) <= dayEnd)
-      .reduce((s, t) => s + (Number(t.amountCents) || 0), 0);
-    const valCents = mode === 'saldo'
-      ? (incUntil - expUntil)
-      : mode === 'por-dia'
-        ? Math.round(expUntil / Math.max(1, dayEnd))
-        : expUntil;
-    return { dayEnd, valCents };
-  });
-
-  const allVals = series.map(s => s.valCents);
-  const minVal = Math.min(0, ...allVals);
-  const maxVal = Math.max(100, ...allVals);
-  const span = Math.max(1, maxVal - minVal);
-  const hasAny = txs.length > 0;
-
-  const pts = series.map((s, idx) => {
-    const x = 4 + (idx / (numSteps - 1)) * 548;
-    const y = hasAny ? (42 - ((s.valCents - minVal) / span) * 28) : 42;
-    return { x, y, dayEnd: s.dayEnd, valCents: s.valCents };
-  });
-
-  const pathLine = buildSmoothSvgPath(pts);
-  const endY = pts[pts.length - 1].y;
-  const colW = 560 / numSteps;
-
-  const hoverZones = pts.map((p, idx) => `
-    <rect x="${(idx * colW).toFixed(1)}" y="0" width="${colW.toFixed(1)}" height="52" fill="transparent"
-      class="chart-hover-zone"
-      data-tip-title="Até dia ${p.dayEnd} (${labelPrefix})"
-      data-tip-val="${fmtBRL(p.valCents)}" />
-  `).join('');
-
-  return `
-    <svg width="100%" viewBox="0 0 560 52" style="display:block; height:auto; max-height:62px;">
-      <line x1="0" y1="44" x2="560" y2="44" stroke="var(--chart-grid, rgba(15,35,50,0.08))" stroke-width="1"/>
-      <path d="${pathLine}" fill="none" stroke="${color}" stroke-width="2.4" stroke-linecap="round" class="anim-spark-draw"/>
-      <circle cx="552" cy="${endY.toFixed(1)}" r="4" fill="#0d6efd" stroke="var(--bg-card-solid, #ffffff)" stroke-width="1.4"/>
-      ${hoverZones}
-    </svg>
-  `;
-}
+// (Gráficos SVG extraídos para src/lib/farol/charts.ts)
 
 // ============================================================
 // 2. ABA: TRANSAÇÕES (FILTROS COMBINÁVEIS + EDIÇÃO EM LOTE + DESFAZER)
@@ -3949,46 +3731,6 @@ function bindPatrimonioEvents() {
 // ============================================================
 let projState = { horizon: 12, deductGoals: true, selectedIdx: 0, bannerIdx: 0 };
 
-function fmtAxisCompactBRL(cents) {
-  const abs = Math.abs(cents);
-  const sign = cents < 0 ? '-' : '';
-  if (abs === 0) return 'R$ 0';
-  if (abs >= 100000) {
-    const kVal = abs / 100000;
-    const formatted = Number.isInteger(kVal) ? String(kVal) : kVal.toFixed(1).replace('.', ',');
-    return `${sign}R$ ${formatted}k`;
-  }
-  return `${sign}R$ ${Math.round(abs / 100)}`;
-}
-
-function buildTopRoundedBarPath(x, yTop, w, h, r = 7, isNegative = false) {
-  if (h <= 0.5) return '';
-  const radius = Math.min(r, w / 2, h);
-  const xRight = x + w;
-  const yBottom = yTop + h;
-  if (!isNegative) {
-    return [
-      `M ${x.toFixed(1)} ${yBottom.toFixed(1)}`,
-      `L ${x.toFixed(1)} ${(yTop + radius).toFixed(1)}`,
-      `Q ${x.toFixed(1)} ${yTop.toFixed(1)} ${(x + radius).toFixed(1)} ${yTop.toFixed(1)}`,
-      `L ${(xRight - radius).toFixed(1)} ${yTop.toFixed(1)}`,
-      `Q ${xRight.toFixed(1)} ${yTop.toFixed(1)} ${xRight.toFixed(1)} ${(yTop + radius).toFixed(1)}`,
-      `L ${xRight.toFixed(1)} ${yBottom.toFixed(1)}`,
-      'Z'
-    ].join(' ');
-  } else {
-    return [
-      `M ${x.toFixed(1)} ${yTop.toFixed(1)}`,
-      `L ${xRight.toFixed(1)} ${yTop.toFixed(1)}`,
-      `L ${xRight.toFixed(1)} ${(yBottom - radius).toFixed(1)}`,
-      `Q ${xRight.toFixed(1)} ${yBottom.toFixed(1)} ${(xRight - radius).toFixed(1)} ${yBottom.toFixed(1)}`,
-      `L ${(x + radius).toFixed(1)} ${yBottom.toFixed(1)}`,
-      `Q ${x.toFixed(1)} ${yBottom.toFixed(1)} ${x.toFixed(1)} ${(yBottom - radius).toFixed(1)}`,
-      'Z'
-    ].join(' ');
-  }
-}
-
 function renderProjecaoView() {
   const shortMonths = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
   const salaryCents = Number(state.profile.monthlySalaryCents) || 0;
@@ -4401,281 +4143,12 @@ function bindContasEvents() {
 }
 
 // ============================================================
-// TELEMETRIA DE CLIQUES & ENGAJAMENTO (fetchLater BATCHING)
+// TELEMETRIA (src/lib/farol/analytics.ts) & MODAIS NATIVOS (src/lib/farol/dialogs.ts)
 // ============================================================
-const ANALYTICS_ENDPOINT = '/api/track';
-const ANALYTICS_BATCH_WINDOW_MS = 10 * 1000;
-const ANALYTICS_MAX_QUEUE_SIZE = 80;
-const ANALYTICS_SESSION_KEY = 'farol_analytics_sid_v1';
-
-const analyticsQueue = [];
-let analyticsFetchLaterResult = null;
-let analyticsFetchLaterController = null;
-let analyticsTrackerBound = false;
-
-function installFetchLaterPolyfill() {
-  if (typeof globalThis === 'undefined' || typeof window === 'undefined' || typeof document === 'undefined') {
-    return;
-  }
-  globalThis.fetchLater ??= function fetchLater(url, init = {}) {
-    let timeoutHandle;
-    let activated = false;
-
-    function sendNow() {
-      if (!(init.signal && init.signal.aborted)) {
-        if (
-          (typeof Request !== 'undefined' && 'keepalive' in Request.prototype) ||
-          init.method !== 'POST' ||
-          init.headers
-        ) {
-          fetch(url, Object.assign({}, init, { keepalive: true })).catch(() => {});
-          activated = true;
-        } else if (typeof navigator?.sendBeacon === 'function') {
-          activated = navigator.sendBeacon(url, init.body);
-        }
-      }
-      destroy();
-    }
-
-    function destroy() {
-      document.removeEventListener('visibilitychange', sendNow);
-      clearTimeout(timeoutHandle);
-    }
-
-    if (document.visibilityState === 'hidden') {
-      queueMicrotask(sendNow);
-    } else {
-      document.addEventListener('visibilitychange', sendNow);
-      if (typeof init.activateAfter === 'number' && init.activateAfter >= 0) {
-        timeoutHandle = setTimeout(sendNow, init.activateAfter);
-      }
-    }
-
-    if (init.signal) {
-      init.signal.addEventListener('abort', destroy);
-    }
-
-    return {
-      get activated() {
-        return activated;
-      }
-    };
-  };
-}
-
-function getAnalyticsSessionId() {
-  try {
-    if (typeof window !== 'undefined' && window.sessionStorage) {
-      let sid = window.sessionStorage.getItem(ANALYTICS_SESSION_KEY);
-      if (!sid) {
-        sid = typeof window.crypto?.randomUUID === 'function'
-          ? window.crypto.randomUUID()
-          : `sid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        window.sessionStorage.setItem(ANALYTICS_SESSION_KEY, sid);
-      }
-      return sid;
-    }
-  } catch {}
-  return `sid-${Date.now()}`;
-}
-
-function describeClickableTarget(el) {
-  if (!el || typeof el.getAttribute !== 'function') return null;
-  if (el.id) return `#${el.id}`;
-  if (el.dataset?.tab) return `tab:${el.dataset.tab}`;
-  if (el.dataset?.closeModal) return `close:${el.dataset.closeModal}`;
-  if (el.dataset?.gateModeBtn) return `gate:${el.dataset.gateModeBtn}`;
-  if (el.dataset?.authTab) return `auth:${el.dataset.authTab}`;
-  if (el.dataset?.quickCat) return `cat-chip:${el.dataset.quickCat}`;
-  if (el.dataset?.editGoal) return 'edit:goal';
-  if (el.dataset?.aporteGoal) return 'aporte:goal';
-  if (el.dataset?.editCat) return 'edit:category';
-  if (el.dataset?.editAcc) return 'edit:account';
-  if (el.dataset?.editTx) return 'edit:tx';
-  if (el.dataset?.segVal) return `seg:${el.dataset.segVal}`;
-  const tag = (el.tagName || 'btn').toLowerCase();
-  const cls = typeof el.className === 'string'
-    ? el.className.trim().split(/\s+/).slice(0, 2).join('.')
-    : '';
-  return cls ? `${tag}.${cls}` : tag;
-}
-
-function trackFarolEvent(eventType, target, label = '') {
-  if (typeof window === 'undefined' || typeof document === 'undefined') return;
-  if (typeof globalThis.fetchLater !== 'function') installFetchLaterPolyfill();
-  if (typeof globalThis.fetchLater !== 'function') return;
-
-  if (analyticsFetchLaterResult?.activated || analyticsQueue.length >= ANALYTICS_MAX_QUEUE_SIZE) {
-    analyticsFetchLaterController = null;
-    analyticsFetchLaterResult = null;
-    analyticsQueue.length = 0;
-  }
-
-  analyticsQueue.push({
-    sessionId: getAnalyticsSessionId(),
-    eventType: String(eventType || 'click').slice(0, 40),
-    target: String(target || 'unknown').slice(0, 120),
-    label: String(label || '').replace(/\s+/g, ' ').trim().slice(0, 80),
-    tab: String(state?.currentTab || '').slice(0, 48),
-    path: String(window.location?.pathname || '/').slice(0, 120),
-  });
-
-  if (analyticsFetchLaterController) {
-    analyticsFetchLaterController.abort();
-  }
-  analyticsFetchLaterController = typeof AbortController === 'function' ? new AbortController() : null;
-
-  try {
-    analyticsFetchLaterResult = globalThis.fetchLater(ANALYTICS_ENDPOINT, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(analyticsQueue),
-      signal: analyticsFetchLaterController?.signal,
-      activateAfter: ANALYTICS_BATCH_WINDOW_MS,
-    });
-  } catch {
-    // Fallback silencioso caso exceda cota do navegador
-  }
-}
-
-function initAnalyticsTracker() {
-  if (analyticsTrackerBound || typeof document === 'undefined' || typeof document.addEventListener !== 'function') {
-    return;
-  }
-  analyticsTrackerBound = true;
-  installFetchLaterPolyfill();
-
-  trackFarolEvent('page_view', window.location?.pathname || '/', document.title || 'Farol Finanças');
-
-  document.addEventListener('click', (event) => {
-    const clickable = event.target?.closest?.('button, a, [role="button"], .sidebar-footer, summary');
-    if (!clickable) return;
-    const targetDesc = describeClickableTarget(clickable);
-    if (!targetDesc) return;
-    const cleanLabel = (
-      clickable.getAttribute('aria-label') ||
-      clickable.getAttribute('title') ||
-      clickable.textContent ||
-      ''
-    ).replace(/\s+/g, ' ').trim().slice(0, 60);
-    trackFarolEvent('click', targetDesc, cleanLabel);
-  }, { passive: true });
-}
-
-// ============================================================
-// MODAIS NATIVOS (<dialog> TOP LAYER + LIVE RAIL PREVIEWS)
-// ============================================================
-let farolSupportsDisplayTransition;
-function canTransitionDisplay() {
-  if (farolSupportsDisplayTransition !== undefined) return farolSupportsDisplayTransition;
-  if (typeof window === 'undefined' || !window.CSS?.supports?.('transition-behavior', 'allow-discrete') || !document.body) {
-    return false;
-  }
-  const probe = document.createElement('div');
-  probe.style.cssText = 'transition: display 1s allow-discrete !important; display: block;';
-  document.body.appendChild(probe);
-  getComputedStyle(probe).display;
-  probe.style.display = 'none';
-  farolSupportsDisplayTransition = getComputedStyle(probe).display === 'block';
-  probe.remove();
-  return farolSupportsDisplayTransition;
-}
-
-function supportsTopLayerExit() {
-  return typeof window !== 'undefined' && Boolean(window.CSS?.supports?.('overlay', 'auto')) && canTransitionDisplay();
-}
-
-async function closeTopLayerModal(dialogEl, immediate = false) {
-  if (!dialogEl) return;
-  if (typeof dialogEl.close !== 'function') {
-    dialogEl.classList?.remove('open');
-    return;
-  }
-  if (!dialogEl.open) {
-    dialogEl.classList?.remove('open');
-    return;
-  }
-  if (immediate || supportsTopLayerExit()) {
-    dialogEl.removeAttribute?.('data-closing');
-    dialogEl.classList?.remove('open');
-    dialogEl.close();
-    return;
-  }
-  if (dialogEl.hasAttribute?.('data-closing')) return;
-  dialogEl.setAttribute('data-closing', '');
-  const animations = typeof dialogEl.getAnimations === 'function'
-    ? dialogEl.getAnimations({ subtree: true })
-    : [];
-  if (animations.length > 0) {
-    await Promise.race([
-      Promise.allSettled(animations.map(a => a.finished)),
-      new Promise(r => setTimeout(r, 320))
-    ]);
-  }
-  if (!dialogEl.hasAttribute('data-closing')) return;
-  dialogEl.removeAttribute('data-closing');
-  dialogEl.classList?.remove('open');
-  if (dialogEl.open) dialogEl.close();
-}
+const { trackFarolEvent, initAnalyticsTracker } = createAnalyticsTracker(() => state?.currentTab || '');
 
 function openFarolModal(modalOrId) {
-  const modal = typeof modalOrId === 'string' ? document.getElementById(modalOrId) : modalOrId;
-  if (!modal) return;
-  modal.removeAttribute?.('data-closing');
-  if (modal.id) {
-    trackFarolEvent('modal_open', modal.id, modal.querySelector?.('.modal-title')?.textContent?.trim() || modal.id);
-  }
-  if (typeof modal.showModal === 'function') {
-    if (!modal.open) {
-      try {
-        modal.showModal();
-      } catch {
-        modal.setAttribute?.('open', '');
-      }
-    }
-  } else {
-    modal.classList?.add('open');
-  }
-}
-
-function closeFarolModal(modalOrId, immediate = false) {
-  const modal = typeof modalOrId === 'string' ? document.getElementById(modalOrId) : modalOrId;
-  if (!modal) return;
-  closeTopLayerModal(modal, immediate);
-}
-
-function setupFarolDialogs() {
-  if (typeof document === 'undefined') return;
-  const needsClosedByFallback = typeof HTMLDialogElement === 'function'
-    && !('closedBy' in HTMLDialogElement.prototype);
-
-  document.querySelectorAll('dialog.modal-dialog').forEach(dialog => {
-    if (dialog.dataset?.dialogBound === '1') return;
-    if (dialog.dataset) dialog.dataset.dialogBound = '1';
-    dialog.addEventListener('cancel', (e) => {
-      e.preventDefault();
-      closeTopLayerModal(dialog, false);
-    });
-    dialog.addEventListener('close', () => {
-      dialog.returnValue = '';
-      dialog.removeAttribute?.('data-closing');
-      dialog.classList?.remove('open');
-    });
-    if (needsClosedByFallback && dialog.getAttribute('closedby') === 'any') {
-      const outside = (e) => {
-        const r = dialog.getBoundingClientRect();
-        return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
-      };
-      let pressedOutside = false;
-      dialog.addEventListener('pointerdown', (e) => {
-        pressedOutside = outside(e);
-      });
-      dialog.addEventListener('pointerup', (e) => {
-        if (pressedOutside && outside(e)) closeTopLayerModal(dialog, false);
-        pressedOutside = false;
-      });
-    }
-  });
+  openFarolModalBase(modalOrId, trackFarolEvent);
 }
 
 function getProfileInitials(name) {
@@ -5970,8 +5443,6 @@ const productTourController = createProductTourController({
 
 const {
   closeFarolProductTour,
-  goToFarolTourStep,
-  startFarolProductTour,
   maybeAutoStartProductTour,
   bindProductTourEvents,
 } = productTourController;
@@ -6002,17 +5473,9 @@ const authController = createAuthController({
 
 const {
   getCloudSessionUser,
-  setAuthGateVisibility,
-  startOtpCooldownTimer,
-  showOtpVerificationStep,
   showForgotPasswordStep,
   showResetPasswordStep,
   setAuthGateMode,
-  resolveAuthenticatedWorkspaceState,
-  ensureUserInIndex,
-  applyAuthenticatedUser,
-  updateAuthHeaderBadge,
-  openAuthModal,
   bindAuthEvents,
   syncStateToCloud,
   hydrateFromCloud,
