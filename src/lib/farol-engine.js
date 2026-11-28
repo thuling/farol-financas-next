@@ -7709,10 +7709,13 @@ function bindProductTourEvents() {
   window.closeFarolProductTour = closeFarolProductTour;
 }
 
-function startOtpCooldownTimer(seconds = 60) {
-  const resendBtn = document.getElementById('btn-gate-resend-otp');
+function startOtpCooldownTimer(seconds = 60, btnId = 'btn-gate-resend-otp') {
+  const resendBtn = document.getElementById(btnId);
   if (!resendBtn) return;
-  if (otpCooldownInterval) clearInterval(otpCooldownInterval);
+  if (otpCooldownInterval) {
+    clearInterval(otpCooldownInterval);
+    otpCooldownInterval = null;
+  }
 
   let rem = Math.max(0, Math.round(seconds));
   const updateLabel = () => {
@@ -7737,12 +7740,55 @@ function startOtpCooldownTimer(seconds = 60) {
   }
 }
 
+function setPasswordFieldVisibility(inputId, visible) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  input.type = visible ? 'text' : 'password';
+  document.querySelectorAll(`[data-toggle-password="${inputId}"]`).forEach(btn => {
+    btn.classList.toggle('is-visible', visible);
+    btn.setAttribute('aria-pressed', visible ? 'true' : 'false');
+    const label = visible ? 'Ocultar senha' : 'Mostrar senha';
+    btn.setAttribute('aria-label', label);
+    btn.setAttribute('title', label);
+  });
+}
+
+function resetAllPasswordVisibilities() {
+  ['gate-password', 'auth-password', 'reset-new-password', 'reset-confirm-password'].forEach(id => {
+    setPasswordFieldVisibility(id, false);
+  });
+}
+
+function bindPasswordVisibilityToggles() {
+  document.querySelectorAll('[data-toggle-password]').forEach(btn => {
+    if (btn.dataset.toggleBound === '1') return;
+    btn.dataset.toggleBound = '1';
+    btn.addEventListener('click', () => {
+      const targetId = btn.dataset.togglePassword;
+      const input = targetId ? document.getElementById(targetId) : null;
+      if (!input) return;
+      const nextVisible = input.type === 'password';
+      setPasswordFieldVisibility(targetId, nextVisible);
+    });
+  });
+}
+
 function getOtpBoxes() {
-  return Array.from(document.querySelectorAll('.otp-digit-box'));
+  return Array.from(document.querySelectorAll('.otp-digit-box:not(.reset-otp-digit-box)'));
+}
+
+function getResetOtpBoxes() {
+  return Array.from(document.querySelectorAll('.reset-otp-digit-box'));
 }
 
 function clearAndFocusOtpBoxes() {
   const boxes = getOtpBoxes();
+  boxes.forEach(b => { b.value = ''; });
+  if (boxes[0]) setTimeout(() => boxes[0].focus(), 40);
+}
+
+function clearAndFocusResetOtpBoxes() {
+  const boxes = getResetOtpBoxes();
   boxes.forEach(b => { b.value = ''; });
   if (boxes[0]) setTimeout(() => boxes[0].focus(), 40);
 }
@@ -7757,13 +7803,29 @@ function fillOtpBoxesWithCode(codeStr) {
   if (boxes[lastIdx]) boxes[lastIdx].focus();
 }
 
+function fillResetOtpBoxesWithCode(codeStr) {
+  const digits = String(codeStr || '').replace(/\D/g, '').slice(0, 6);
+  const boxes = getResetOtpBoxes();
+  boxes.forEach((b, idx) => {
+    b.value = digits[idx] || '';
+  });
+  const lastIdx = Math.min(5, Math.max(0, digits.length - 1));
+  if (boxes[lastIdx]) boxes[lastIdx].focus();
+}
+
 function getEnteredOtpCode() {
   return getOtpBoxes().map(b => (b.value || '').trim()).join('');
+}
+
+function getEnteredResetOtpCode() {
+  return getResetOtpBoxes().map(b => (b.value || '').trim()).join('');
 }
 
 function showOtpVerificationStep({ email, purpose, cooldownSeconds = 60 }) {
   const formGate = document.getElementById('form-auth-gate');
   const formOtp = document.getElementById('form-auth-otp');
+  const formForgot = document.getElementById('form-auth-forgot');
+  const formReset = document.getElementById('form-auth-reset');
   const titleEl = document.getElementById('auth-gate-title');
   const badgeEl = document.getElementById('otp-badge-label');
   const emailDisplay = document.getElementById('otp-email-display');
@@ -7772,6 +7834,8 @@ function showOtpVerificationStep({ email, purpose, cooldownSeconds = 60 }) {
   const otpFeedback = document.getElementById('otp-feedback');
 
   if (formGate) formGate.style.display = 'none';
+  if (formForgot) formForgot.style.display = 'none';
+  if (formReset) formReset.style.display = 'none';
   if (formOtp) formOtp.style.display = 'flex';
   if (titleEl) titleEl.textContent = 'Verifique seu código';
   if (targetEmailInput) targetEmailInput.value = email || '';
@@ -7784,14 +7848,76 @@ function showOtpVerificationStep({ email, purpose, cooldownSeconds = 60 }) {
   }
   if (otpFeedback) otpFeedback.style.display = 'none';
 
+  resetAllPasswordVisibilities();
   clearAndFocusOtpBoxes();
-  startOtpCooldownTimer(cooldownSeconds || 60);
+  startOtpCooldownTimer(cooldownSeconds || 60, 'btn-gate-resend-otp');
+}
+
+function showForgotPasswordStep(prefillEmail = '') {
+  const formGate = document.getElementById('form-auth-gate');
+  const formOtp = document.getElementById('form-auth-otp');
+  const formForgot = document.getElementById('form-auth-forgot');
+  const formReset = document.getElementById('form-auth-reset');
+  const titleEl = document.getElementById('auth-gate-title');
+  const forgotEmail = document.getElementById('forgot-email');
+  const forgotFeedback = document.getElementById('forgot-feedback');
+
+  if (otpCooldownInterval) {
+    clearInterval(otpCooldownInterval);
+    otpCooldownInterval = null;
+  }
+
+  if (formGate) formGate.style.display = 'none';
+  if (formOtp) formOtp.style.display = 'none';
+  if (formReset) formReset.style.display = 'none';
+  if (formForgot) formForgot.style.display = 'flex';
+  if (titleEl) titleEl.textContent = 'Recuperar senha';
+  if (forgotFeedback) forgotFeedback.style.display = 'none';
+  document.querySelectorAll('[data-gate-mode-btn]').forEach(btn => btn.classList.remove('active'));
+
+  const emailToUse = String(prefillEmail || document.getElementById('gate-email')?.value || '').trim();
+  if (forgotEmail) {
+    if (emailToUse) forgotEmail.value = emailToUse;
+    setTimeout(() => forgotEmail.focus(), 40);
+  }
+  resetAllPasswordVisibilities();
+}
+
+function showResetPasswordStep({ email, cooldownSeconds = 60 }) {
+  const formGate = document.getElementById('form-auth-gate');
+  const formOtp = document.getElementById('form-auth-otp');
+  const formForgot = document.getElementById('form-auth-forgot');
+  const formReset = document.getElementById('form-auth-reset');
+  const titleEl = document.getElementById('auth-gate-title');
+  const targetEmailInput = document.getElementById('reset-target-email');
+  const emailDisplay = document.getElementById('reset-email-display');
+  const newPwInput = document.getElementById('reset-new-password');
+  const confirmPwInput = document.getElementById('reset-confirm-password');
+  const resetFeedback = document.getElementById('reset-feedback');
+
+  if (formGate) formGate.style.display = 'none';
+  if (formOtp) formOtp.style.display = 'none';
+  if (formForgot) formForgot.style.display = 'none';
+  if (formReset) formReset.style.display = 'flex';
+  if (titleEl) titleEl.textContent = 'Criar nova senha';
+  if (targetEmailInput) targetEmailInput.value = email || '';
+  if (emailDisplay) emailDisplay.textContent = email || '';
+  if (newPwInput) newPwInput.value = '';
+  if (confirmPwInput) confirmPwInput.value = '';
+  if (resetFeedback) resetFeedback.style.display = 'none';
+  document.querySelectorAll('[data-gate-mode-btn]').forEach(btn => btn.classList.remove('active'));
+
+  resetAllPasswordVisibilities();
+  clearAndFocusResetOtpBoxes();
+  startOtpCooldownTimer(cooldownSeconds || 60, 'btn-gate-resend-reset');
 }
 
 function setAuthGateMode(mode) {
   const isReg = mode === 'register';
   const formGate = document.getElementById('form-auth-gate');
   const formOtp = document.getElementById('form-auth-otp');
+  const formForgot = document.getElementById('form-auth-forgot');
+  const formReset = document.getElementById('form-auth-reset');
   const modeInput = document.getElementById('gate-mode');
   const titleEl = document.getElementById('auth-gate-title');
   const nameWrap = document.getElementById('gate-name-wrap');
@@ -7799,16 +7925,30 @@ function setAuthGateMode(mode) {
   const heroTitle = document.getElementById('gate-hero-title');
   const heroSub = document.getElementById('gate-hero-sub');
   const heroBtn = document.getElementById('gate-hero-toggle-btn');
+  const forgotBtn = document.getElementById('gate-forgot-btn');
+  const switchPrompt = document.getElementById('gate-switch-prompt');
   const inlineSwitch = document.getElementById('gate-switch-inline');
   const feedback = document.getElementById('gate-feedback');
 
+  if (otpCooldownInterval) {
+    clearInterval(otpCooldownInterval);
+    otpCooldownInterval = null;
+  }
+
   if (formGate) formGate.style.display = 'flex';
   if (formOtp) formOtp.style.display = 'none';
+  if (formForgot) formForgot.style.display = 'none';
+  if (formReset) formReset.style.display = 'none';
   if (modeInput) modeInput.value = isReg ? 'register' : 'login';
   if (titleEl) titleEl.textContent = isReg ? 'Crie sua conta' : 'Acesse sua conta';
   if (nameWrap) nameWrap.style.display = isReg ? 'flex' : 'none';
+  if (forgotBtn) forgotBtn.style.display = isReg ? 'none' : 'inline-block';
   const pwInput = document.getElementById('gate-password');
-  if (pwInput) pwInput.setAttribute('autocomplete', isReg ? 'new-password' : 'current-password');
+  if (pwInput) {
+    pwInput.setAttribute('autocomplete', isReg ? 'new-password' : 'current-password');
+    pwInput.setAttribute('placeholder', isReg ? 'Crie uma senha (mín. 8 caracteres)' : 'Digite sua senha');
+  }
+  resetAllPasswordVisibilities();
   if (submitLabel) submitLabel.textContent = isReg ? 'CRIAR CONTA' : 'ENTRAR';
   if (heroTitle) heroTitle.textContent = isReg ? 'JÁ TEM CONTA?' : 'BEM-VINDO!';
   if (heroSub) {
@@ -7817,7 +7957,8 @@ function setAuthGateMode(mode) {
       : 'Insira seus dados e comece sua jornada financeira conosco no Farol';
   }
   if (heroBtn) heroBtn.textContent = isReg ? 'FAZER LOGIN' : 'CRIAR CONTA';
-  if (inlineSwitch) inlineSwitch.textContent = isReg ? 'Já tenho conta' : 'Criar conta grátis';
+  if (switchPrompt) switchPrompt.textContent = isReg ? 'Já tem uma conta?' : 'Ainda não tem conta?';
+  if (inlineSwitch) inlineSwitch.textContent = isReg ? 'Fazer login' : 'Criar conta grátis';
   if (feedback) feedback.style.display = 'none';
   document.querySelectorAll('[data-gate-mode-btn]').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.gateModeBtn === (isReg ? 'register' : 'login'));
@@ -8000,11 +8141,14 @@ function openAuthModal() {
     if (logoutBtn) logoutBtn.style.display = 'none';
     const mode = document.getElementById('auth-mode')?.value || 'login';
     if (submitBtn) submitBtn.textContent = mode === 'register' ? 'Criar minha conta' : 'Entrar na conta';
+    const modalForgot = document.getElementById('btn-modal-auth-forgot');
+    if (modalForgot) modalForgot.style.display = mode === 'register' ? 'none' : 'inline-block';
   }
 
   const railBadge = document.getElementById('auth-rail-badge');
   if (railBadge) railBadge.textContent = (cloudSessionUser && cloudSessionUser.email) ? 'Conectado ao PostgreSQL' : 'PostgreSQL + 2FA';
 
+  resetAllPasswordVisibilities();
   openFarolModal(modal);
 }
 
@@ -8036,6 +8180,9 @@ function bindAuthEvents() {
     }
   }
 
+  // Botões de mostrar/ocultar senha (olho) em login, cadastro, redefinição e modal
+  bindPasswordVisibilityToggles();
+
   // Eventos da Tela Inicial (Auth Gate)
   const heroToggleBtn = document.getElementById('gate-hero-toggle-btn');
   if (heroToggleBtn) {
@@ -8050,6 +8197,23 @@ function bindAuthEvents() {
     inlineSwitchBtn.addEventListener('click', () => {
       const cur = document.getElementById('gate-mode')?.value || 'login';
       setAuthGateMode(cur === 'login' ? 'register' : 'login');
+    });
+  }
+
+  const forgotBtn = document.getElementById('gate-forgot-btn');
+  if (forgotBtn) {
+    forgotBtn.addEventListener('click', () => {
+      showForgotPasswordStep(document.getElementById('gate-email')?.value || '');
+    });
+  }
+
+  const modalForgotBtn = document.getElementById('btn-modal-auth-forgot');
+  if (modalForgotBtn) {
+    modalForgotBtn.addEventListener('click', () => {
+      const modalEmail = document.getElementById('auth-email')?.value || '';
+      closeFarolModal('modal-auth', true);
+      setAuthGateVisibility(true);
+      showForgotPasswordStep(modalEmail);
     });
   }
 
@@ -8221,6 +8385,204 @@ function bindAuthEvents() {
     });
   }
 
+  // ============================================================
+  // FLUXO: ESQUECI MINHA SENHA (SOLICITAR OTP + REDEFINIR SENHA)
+  // ============================================================
+  const resetOtpBoxes = getResetOtpBoxes();
+  resetOtpBoxes.forEach((box, idx) => {
+    box.addEventListener('input', (e) => {
+      const val = (e.target.value || '').replace(/\D/g, '');
+      e.target.value = val.slice(-1);
+      if (e.target.value && idx < resetOtpBoxes.length - 1) {
+        resetOtpBoxes[idx + 1].focus();
+        resetOtpBoxes[idx + 1].select();
+      }
+    });
+
+    box.addEventListener('keydown', (e) => {
+      if (e.key === 'Backspace' && !box.value && idx > 0) {
+        resetOtpBoxes[idx - 1].focus();
+        resetOtpBoxes[idx - 1].value = '';
+      }
+    });
+
+    box.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const pasted = (e.clipboardData || window.clipboardData).getData('text');
+      fillResetOtpBoxesWithCode(pasted);
+    });
+  });
+
+  const backForgotBtn = document.getElementById('btn-gate-forgot-back');
+  if (backForgotBtn) {
+    backForgotBtn.addEventListener('click', () => setAuthGateMode('login'));
+  }
+
+  const backResetBtn = document.getElementById('btn-gate-reset-back');
+  if (backResetBtn) {
+    backResetBtn.addEventListener('click', () => {
+      const curEmail = document.getElementById('reset-target-email')?.value || '';
+      showForgotPasswordStep(curEmail);
+    });
+  }
+
+  const formForgot = document.getElementById('form-auth-forgot');
+  if (formForgot) {
+    formForgot.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('forgot-email')?.value?.trim() || '';
+      const feedback = document.getElementById('forgot-feedback');
+      const showForgotMsg = (msg, isErr = false) => {
+        if (!feedback) return;
+        feedback.style.display = 'block';
+        feedback.style.background = isErr ? 'var(--coral-soft)' : 'var(--green-soft)';
+        feedback.style.color = isErr ? 'var(--coral-red)' : 'var(--green-emerald)';
+        feedback.textContent = msg;
+      };
+
+      if (!email) {
+        showForgotMsg('Informe o e-mail da sua conta.', true);
+        return;
+      }
+
+      showForgotMsg('Enviando código de recuperação para seu e-mail...', false);
+      try {
+        const res = await fetch('/api/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'forgot_password', email })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          showForgotMsg(data.error || 'Não foi possível enviar o código de recuperação.', true);
+          return;
+        }
+        showResetPasswordStep({ email: data.email || email, cooldownSeconds: data.cooldownSeconds || 60 });
+        const resetFeedback = document.getElementById('reset-feedback');
+        if (resetFeedback) {
+          resetFeedback.style.display = 'block';
+          resetFeedback.style.background = 'var(--green-soft)';
+          resetFeedback.style.color = 'var(--green-emerald)';
+          resetFeedback.textContent = 'Se houver uma conta com este e-mail, enviamos um código de 6 dígitos. Verifique sua caixa de entrada e spam.';
+        }
+      } catch {
+        showForgotMsg('Erro de conexão com o servidor.', true);
+      }
+    });
+  }
+
+  const resendResetBtn = document.getElementById('btn-gate-resend-reset');
+  if (resendResetBtn) {
+    resendResetBtn.addEventListener('click', async () => {
+      const email = document.getElementById('reset-target-email')?.value || '';
+      const feedback = document.getElementById('reset-feedback');
+      const showResetMsg = (msg, isErr = false) => {
+        if (!feedback) return;
+        feedback.style.display = 'block';
+        feedback.style.background = isErr ? 'var(--coral-soft)' : 'var(--green-soft)';
+        feedback.style.color = isErr ? 'var(--coral-red)' : 'var(--green-emerald)';
+        feedback.textContent = msg;
+      };
+      if (!email) return;
+      showResetMsg('Enviando novo código de recuperação...', false);
+      try {
+        const res = await fetch('/api/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'resend_otp', email, purpose: 'reset_password' })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          if (data.remainingCooldown) startOtpCooldownTimer(data.remainingCooldown, 'btn-gate-resend-reset');
+          showResetMsg(data.error || 'Aguarde antes de reenviar.', true);
+          return;
+        }
+        clearAndFocusResetOtpBoxes();
+        startOtpCooldownTimer(data.cooldownSeconds || 60, 'btn-gate-resend-reset');
+        showResetMsg('Novo código de recuperação enviado! O anterior foi invalidado.', false);
+      } catch {
+        showResetMsg('Erro ao reenviar código de recuperação.', true);
+      }
+    });
+  }
+
+  const formReset = document.getElementById('form-auth-reset');
+  if (formReset) {
+    formReset.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('reset-target-email')?.value || '';
+      const code = getEnteredResetOtpCode();
+      const newPassword = document.getElementById('reset-new-password')?.value || '';
+      const confirmPassword = document.getElementById('reset-confirm-password')?.value || '';
+      const feedback = document.getElementById('reset-feedback');
+      const showResetMsg = (msg, isErr = false) => {
+        if (!feedback) return;
+        feedback.style.display = 'block';
+        feedback.style.background = isErr ? 'var(--coral-soft)' : 'var(--green-soft)';
+        feedback.style.color = isErr ? 'var(--coral-red)' : 'var(--green-emerald)';
+        feedback.textContent = msg;
+      };
+
+      if (code.length !== 6) {
+        showResetMsg('Preencha todos os 6 dígitos do código de recuperação.', true);
+        return;
+      }
+      if (newPassword.length < 8) {
+        showResetMsg('A nova senha deve ter pelo menos 8 caracteres.', true);
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        showResetMsg('As senhas digitadas não conferem. Verifique e tente novamente.', true);
+        return;
+      }
+
+      showResetMsg('Validando código e salvando nova senha...', false);
+      try {
+        const res = await fetch('/api/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'reset_password', email, code, newPassword })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          showResetMsg(data.error || 'Não foi possível redefinir a senha.', true);
+          if (data.locked || data.expired) {
+            clearAndFocusResetOtpBoxes();
+          }
+          return;
+        }
+
+        if (otpCooldownInterval) {
+          clearInterval(otpCooldownInterval);
+          otpCooldownInterval = null;
+        }
+        const newPwInput = document.getElementById('reset-new-password');
+        const confirmPwInput = document.getElementById('reset-confirm-password');
+        if (newPwInput) newPwInput.value = '';
+        if (confirmPwInput) confirmPwInput.value = '';
+        resetAllPasswordVisibilities();
+
+        if (data.user) {
+          applyAuthenticatedUser(data.user, data.state, true, 'reset_password');
+          showUndoToast('Senha redefinida com sucesso! Você já está conectado(a).');
+        } else {
+          setAuthGateMode('login');
+          const gateEmail = document.getElementById('gate-email');
+          if (gateEmail) gateEmail.value = email;
+          const gateFeedback = document.getElementById('gate-feedback');
+          if (gateFeedback) {
+            gateFeedback.style.display = 'block';
+            gateFeedback.style.background = 'var(--green-soft)';
+            gateFeedback.style.color = 'var(--green-emerald)';
+            gateFeedback.textContent = 'Senha redefinida com sucesso! Entre com sua nova senha.';
+          }
+        }
+      } catch {
+        showResetMsg('Erro de rede ao redefinir a senha.', true);
+      }
+    });
+  }
+
   const openBtn = document.getElementById('btn-open-auth');
   if (openBtn) {
     openBtn.addEventListener('click', () => openAuthModal());
@@ -8232,6 +8594,7 @@ function bindAuthEvents() {
       const modeInput = document.getElementById('auth-mode');
       const nameGroup = document.getElementById('auth-name-group');
       const pwInput = document.getElementById('auth-password');
+      const modalForgot = document.getElementById('btn-modal-auth-forgot');
       const submitBtn = document.getElementById('btn-auth-submit');
       const feedback = document.getElementById('auth-feedback');
       if (modeInput) modeInput.value = mode;
@@ -8241,7 +8604,12 @@ function bindAuthEvents() {
         b.setAttribute('aria-pressed', isAct ? 'true' : 'false');
       });
       if (nameGroup) nameGroup.style.display = mode === 'register' ? 'flex' : 'none';
-      if (pwInput) pwInput.setAttribute('autocomplete', mode === 'register' ? 'new-password' : 'current-password');
+      if (modalForgot) modalForgot.style.display = mode === 'register' ? 'none' : 'inline-block';
+      if (pwInput) {
+        pwInput.setAttribute('autocomplete', mode === 'register' ? 'new-password' : 'current-password');
+        pwInput.setAttribute('placeholder', mode === 'register' ? 'Mínimo 8 caracteres' : 'Digite sua senha');
+      }
+      setPasswordFieldVisibility('auth-password', false);
       if (submitBtn) submitBtn.textContent = mode === 'register' ? 'Criar minha conta' : 'Entrar na conta';
       if (feedback) feedback.style.display = 'none';
     });
@@ -8261,6 +8629,7 @@ function bindAuthEvents() {
       }
       updateAuthHeaderBadge();
       closeFarolModal('modal-auth', true);
+      setAuthGateMode('login');
       setAuthGateVisibility(true);
     });
   }

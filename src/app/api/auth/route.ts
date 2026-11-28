@@ -135,6 +135,15 @@ function isUntouchedDemoServerState(st: any): boolean {
     || recs.some((r: any) => r && r.id === 'rec-1');
 }
 
+type OtpPurpose = 'register' | 'login' | 'reset_password';
+
+function isEmailProviderConfigured(): boolean {
+  const smtpUser = (process.env.SMTP_USER || '').trim();
+  const smtpPass = (process.env.SMTP_PASS || '').trim();
+  const resendKey = (process.env.RESEND_API_KEY || '').trim();
+  return Boolean((smtpUser && smtpPass) || resendKey);
+}
+
 async function sendOtpEmail({
   toEmail,
   userName,
@@ -144,7 +153,7 @@ async function sendOtpEmail({
   toEmail: string;
   userName: string;
   code: string;
-  purpose: 'register' | 'login';
+  purpose: OtpPurpose;
 }): Promise<{ deliveredByEmail: boolean; providerNote?: string }> {
   const smtpUser = (process.env.SMTP_USER || '').trim();
   const smtpPass = (process.env.SMTP_PASS || '').trim();
@@ -158,7 +167,21 @@ async function sendOtpEmail({
   const subject =
     purpose === 'register'
       ? `${code} é o seu código para ativar sua conta no Farol Finanças`
-      : `${code} é o seu código de acesso em 2 etapas — Farol Finanças`;
+      : purpose === 'reset_password'
+        ? `${code} é o seu código para redefinir sua senha — Farol Finanças`
+        : `${code} é o seu código de acesso em 2 etapas — Farol Finanças`;
+
+  const bodyLead =
+    purpose === 'register'
+      ? 'Use o código de 6 dígitos abaixo para confirmar seu e-mail e ativar sua conta no Farol Finanças:'
+      : purpose === 'reset_password'
+        ? 'Recebemos uma solicitação para redefinir a senha da sua conta no Farol Finanças. Use o código de 6 dígitos abaixo para criar uma nova senha:'
+        : 'Use o código de verificação em duas etapas (2FA) abaixo para concluir seu login:';
+
+  const footerNote =
+    purpose === 'reset_password'
+      ? 'Este código é de uso único e expira em <b>10 minutos</b> (máximo de 3 tentativas). Se você não solicitou a redefinição de senha, ignore este e-mail — sua senha atual permanece inalterada.'
+      : 'Este código é de uso único e expira em <b>10 minutos</b> (máximo de 3 tentativas). Se você não solicitou este código, ignore este e-mail.';
 
   const safeName = escapeHtml(sanitizeName(userName, 'usuário'));
 
@@ -167,17 +190,13 @@ async function sendOtpEmail({
       <div style="font-size:13px;font-weight:700;color:#49b6eb;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:8px;">Farol Finanças · Segurança</div>
       <h2 style="margin:0 0 12px;font-size:20px;color:#ffffff;">Olá, ${safeName}!</h2>
       <p style="font-size:14px;line-height:1.55;color:#9bb0bd;margin:0 0 22px;">
-        ${
-          purpose === 'register'
-            ? 'Use o código de 6 dígitos abaixo para confirmar seu e-mail e ativar sua conta no Farol Finanças:'
-            : 'Use o código de verificação em duas etapas (2FA) abaixo para concluir seu login:'
-        }
+        ${bodyLead}
       </p>
       <div style="background:#081017;border:1px solid rgba(73,182,235,0.4);border-radius:12px;padding:18px;text-align:center;font-size:32px;font-weight:800;letter-spacing:0.28em;color:#38b6ff;margin-bottom:20px;">
         ${code}
       </div>
       <p style="font-size:12px;color:#7c94a3;margin:0;">
-        Este código é de uso único e expira em <b>10 minutos</b> (máximo de 3 tentativas). Se você não solicitou este código, ignore este e-mail.
+        ${footerNote}
       </p>
     </div>
   `;
@@ -254,7 +273,7 @@ async function sendOtpEmail({
 async function issueAndDeliverOtp(
   prisma: NonNullable<ReturnType<typeof getPrisma>>,
   account: { id: string; email: string; name: string },
-  purpose: 'register' | 'login'
+  purpose: OtpPurpose
 ) {
   await prisma.otpVerification.updateMany({
     where: { userId: account.id, used: false },
@@ -458,7 +477,7 @@ export async function POST(req: NextRequest) {
       }
 
       const activeOtp = await prisma.otpVerification.findFirst({
-        where: { userId: account.id, used: false },
+        where: { userId: account.id, used: false, purpose: { in: ['login', 'register'] } },
         orderBy: { createdAt: 'desc' },
       });
 
@@ -629,8 +648,32 @@ export async function POST(req: NextRequest) {
       if (!EMAIL_REGEX.test(email)) {
         return NextResponse.json({ ok: false, error: 'Informe um e-mail válido.' }, { status: 400 });
       }
+      const requestedPurpose = String(body.purpose || '');
+      const isResetResend = requestedPurpose === 'reset_password';
       const account = await prisma.userAccount.findUnique({ where: { email } });
       if (!account) {
+        if (isResetResend) {
+          if (!isEmailProviderConfigured()) {
+            return NextResponse.json(
+              {
+                ok: false,
+                emailNotConfigured: true,
+                error:
+                  'Serviço de envio de e-mail ainda não configurado na Vercel (adicione SMTP_USER + SMTP_PASS ou RESEND_API_KEY em Environment Variables).',
+              },
+              { status: 503 }
+            );
+          }
+          return NextResponse.json({
+            ok: true,
+            step: 'verify_otp',
+            email,
+            purpose: 'reset_password',
+            expiresInSeconds: 600,
+            cooldownSeconds: 60,
+            deliveredByEmail: true,
+          });
+        }
         return NextResponse.json(
           { ok: false, error: 'Não foi possível reenviar o código para este e-mail.' },
           { status: 400 }
@@ -640,8 +683,207 @@ export async function POST(req: NextRequest) {
       const cooldownRes = await checkOtpCooldown(prisma, account.id);
       if (cooldownRes) return cooldownRes;
 
-      const purpose: 'register' | 'login' = account.verified ? 'login' : 'register';
+      const purpose: OtpPurpose = isResetResend
+        ? 'reset_password'
+        : account.verified
+          ? 'login'
+          : 'register';
       return issueAndDeliverOtp(prisma, account, purpose);
+    }
+
+    // ============================================================
+    // 2B. ESQUECI MINHA SENHA (SOLICITA CÓDIGO OTP DE REDEFINIÇÃO)
+    // ============================================================
+    if (action === 'forgot_password') {
+      if (!EMAIL_REGEX.test(email)) {
+        return NextResponse.json({ ok: false, error: 'Informe um e-mail válido.' }, { status: 400 });
+      }
+
+      const account = await prisma.userAccount.findUnique({ where: { email } });
+      if (!account) {
+        if (!isEmailProviderConfigured()) {
+          return NextResponse.json(
+            {
+              ok: false,
+              emailNotConfigured: true,
+              error:
+                'Serviço de envio de e-mail ainda não configurado na Vercel (adicione SMTP_USER + SMTP_PASS ou RESEND_API_KEY em Environment Variables).',
+            },
+            { status: 503 }
+          );
+        }
+        // Resposta uniforme para evitar enumeração de contas cadastradas
+        return NextResponse.json({
+          ok: true,
+          step: 'verify_otp',
+          email,
+          purpose: 'reset_password',
+          expiresInSeconds: 600,
+          cooldownSeconds: 60,
+          deliveredByEmail: true,
+        });
+      }
+
+      const cooldownRes = await checkOtpCooldown(prisma, account.id);
+      if (cooldownRes) return cooldownRes;
+
+      return issueAndDeliverOtp(prisma, account, 'reset_password');
+    }
+
+    // ============================================================
+    // 2C. REDEFINIR SENHA COM CÓDIGO OTP DE 6 DÍGITOS
+    // ============================================================
+    if (action === 'reset_password') {
+      const code = String(body.code || '').replace(/\D/g, '').trim();
+      const newPassword = String(body.newPassword ?? body.password ?? '');
+
+      if (!EMAIL_REGEX.test(email) || code.length !== 6) {
+        return NextResponse.json(
+          { ok: false, error: 'Digite um e-mail válido e os 6 dígitos do código de recuperação.' },
+          { status: 400 }
+        );
+      }
+
+      if (newPassword.length < 8) {
+        return NextResponse.json(
+          { ok: false, error: 'A nova senha deve ter pelo menos 8 caracteres.' },
+          { status: 400 }
+        );
+      }
+
+      const account = await prisma.userAccount.findUnique({ where: { email } });
+      if (!account) {
+        return NextResponse.json({ ok: false, error: 'Código inválido ou expirado.' }, { status: 401 });
+      }
+
+      const activeOtp = await prisma.otpVerification.findFirst({
+        where: { userId: account.id, used: false, purpose: 'reset_password' },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (!activeOtp) {
+        return NextResponse.json(
+          { ok: false, error: 'Nenhum código de recuperação ativo ou código já utilizado. Clique em Reenviar código.' },
+          { status: 400 }
+        );
+      }
+
+      if (new Date() > activeOtp.expiresAt) {
+        await prisma.otpVerification.update({
+          where: { id: activeOtp.id },
+          data: { used: true },
+        });
+        return NextResponse.json(
+          { ok: false, expired: true, error: 'Este código expirou (prazo de 10 minutos). Clique em Reenviar código.' },
+          { status: 400 }
+        );
+      }
+
+      if (activeOtp.attempts >= OTP_MAX_ATTEMPTS) {
+        await prisma.otpVerification.update({
+          where: { id: activeOtp.id },
+          data: { used: true },
+        });
+        return NextResponse.json(
+          { ok: false, locked: true, error: 'Código bloqueado após 3 tentativas incorretas. Clique em Reenviar código.' },
+          { status: 429 }
+        );
+      }
+
+      const isValid = verifyOtpHash(code, account.id, activeOtp.codeHash);
+      if (!isValid) {
+        const nextAttempts = activeOtp.attempts + 1;
+        const exhausted = nextAttempts >= OTP_MAX_ATTEMPTS;
+        await prisma.otpVerification.update({
+          where: { id: activeOtp.id },
+          data: {
+            attempts: nextAttempts,
+            used: exhausted,
+          },
+        });
+        const remaining = Math.max(0, OTP_MAX_ATTEMPTS - nextAttempts);
+        return NextResponse.json(
+          {
+            ok: false,
+            locked: exhausted,
+            error: exhausted
+              ? 'Código invalidado após 3 tentativas incorretas. Solicite um novo código.'
+              : `Código incorreto. Você ainda tem ${remaining} tentativa(s).`,
+          },
+          { status: 401 }
+        );
+      }
+
+      // Código válido! Consome todos os OTPs pendentes, atualiza senha, desbloqueia conta e revoga sessões antigas
+      await prisma.otpVerification.updateMany({
+        where: { userId: account.id, used: false },
+        data: { used: true },
+      });
+
+      const updatedAccount = await prisma.userAccount.update({
+        where: { id: account.id },
+        data: {
+          passwordHash: hashPassword(newPassword),
+          verified: true,
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+          sessionVersion: { increment: 1 },
+        },
+      });
+
+      let workspace = await prisma.userWorkspace.findUnique({ where: { id: updatedAccount.id } });
+      let parsedState = workspace ? JSON.parse(workspace.stateJson) : null;
+
+      if (parsedState && isUntouchedDemoServerState(parsedState)) {
+        parsedState = null;
+        if (workspace) {
+          await prisma.userWorkspace.delete({ where: { id: updatedAccount.id } }).catch(() => {});
+          workspace = null;
+        }
+      }
+
+      if (parsedState && typeof parsedState === 'object') {
+        const sanitized = sanitizeWorkspaceInstallments(parsedState);
+        if (sanitized.changed) {
+          parsedState = sanitized.state;
+          if (workspace) {
+            await prisma.userWorkspace
+              .update({
+                where: { id: updatedAccount.id },
+                data: { stateJson: JSON.stringify(parsedState) },
+              })
+              .catch(() => {});
+          }
+        }
+      }
+
+      const token = signSession({
+        id: updatedAccount.id,
+        email: updatedAccount.email,
+        name: updatedAccount.name,
+        sv: updatedAccount.sessionVersion,
+      });
+
+      const res = NextResponse.json({
+        ok: true,
+        step: 'authenticated',
+        purpose: 'reset_password',
+        user: {
+          id: updatedAccount.id,
+          email: updatedAccount.email,
+          name: updatedAccount.name,
+          isAdmin: isAdminEmail(updatedAccount.email),
+        },
+        state: parsedState,
+      });
+      res.cookies.set(SESSION_COOKIE, token, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+        path: '/',
+        maxAge: Math.floor(SESSION_TTL_MS / 1000),
+      });
+      return res;
     }
 
     // ============================================================

@@ -548,6 +548,110 @@ function read(rel) {
     assert.equal(bootCtx.__tourSteps[7].selector, '#tour-tx-thead');
     assert.equal(bootCtx.__tourSteps[8].selector, '#profile-trigger');
     console.log('PASS [Feature 10] Complete 9-step Product Tour structure, absence of permanent topbar button, and target selectors verified');
+
+    // -------------------------------------------------------------------------
+    // 11. Forgot Password (OTP reset flow) & Password Visibility Eye Toggles
+    // -------------------------------------------------------------------------
+    const authApiSrc = read('src/app/api/auth/route.ts');
+    assert.ok(authApiSrc.includes("if (action === 'forgot_password')"), 'Auth API must implement forgot_password action');
+    assert.ok(authApiSrc.includes("if (action === 'reset_password')"), 'Auth API must implement reset_password action');
+    assert.ok(authApiSrc.includes("purpose: { in: ['login', 'register'] }"), 'verify_otp must reject reset_password OTPs (purpose isolation)');
+    assert.ok(authApiSrc.includes("purpose: 'reset_password'"), 'reset_password must require reset_password OTPs');
+    assert.ok(authApiSrc.includes('newPassword.length < 8'), 'reset_password must enforce >= 8 character passwords');
+    assert.ok(authApiSrc.includes('lockedUntil: null'), 'reset_password must unlock locked accounts upon valid reset');
+    assert.ok((authApiSrc.match(/sessionVersion:\s*\{\s*increment:\s*1\s*\}/g) || []).length >= 2, 'Both logout and reset_password must increment sessionVersion to revoke old sessions');
+
+    assert.ok(shellSrc.includes('id="gate-forgot-btn"'), 'Auth gate must include Esqueci minha senha button');
+    assert.ok(shellSrc.includes('id="btn-modal-auth-forgot"'), 'Auth modal must include Esqueci minha senha button');
+    assert.ok(shellSrc.includes('id="form-auth-forgot"'), 'Auth gate must include forgot-password email form');
+    assert.ok(shellSrc.includes('id="form-auth-reset"'), 'Auth gate must include OTP + new password reset form');
+    assert.ok(shellSrc.includes('data-toggle-password="gate-password"'), 'Auth gate password must include eye toggle');
+    assert.ok(shellSrc.includes('data-toggle-password="auth-password"'), 'Auth modal password must include eye toggle');
+    assert.ok(shellSrc.includes('data-toggle-password="reset-new-password"'), 'Reset new password must include eye toggle');
+    assert.ok(shellSrc.includes('data-toggle-password="reset-confirm-password"'), 'Reset confirm password must include eye toggle');
+
+    const cssSrc = read('src/app/globals.css');
+    assert.ok(cssSrc.includes('.password-toggle-btn') && cssSrc.includes('::-ms-reveal'), 'CSS must style password eye toggle and suppress duplicate native Edge reveal icon');
+
+    // Runtime verification of password visibility toggle and forgot/reset UI transitions
+    const pwElements = new Map();
+    const makePwEl = (id) => {
+      if (!pwElements.has(id)) {
+        pwElements.set(id, {
+          id,
+          type: 'password',
+          value: '',
+          textContent: '',
+          disabled: false,
+          style: {},
+          dataset: {},
+          attrs: {},
+          classes: new Set(),
+          classList: {
+            toggle(c, force) {
+              if (force === undefined) {
+                if (this._set.has(c)) this._set.delete(c);
+                else this._set.add(c);
+              } else if (force) {
+                this._set.add(c);
+              } else {
+                this._set.delete(c);
+              }
+            },
+            add(c) { this._set.add(c); },
+            remove(c) { this._set.delete(c); },
+            _set: null,
+          },
+          setAttribute(k, v) { this.attrs[k] = String(v); },
+          getAttribute(k) { return this.attrs[k]; },
+          focus() {},
+        });
+        const obj = pwElements.get(id);
+        obj.classList._set = obj.classes;
+      }
+      return pwElements.get(id);
+    };
+    const toggleBtnMock = makePwEl('toggle-gate-pw');
+    toggleBtnMock.dataset.togglePassword = 'gate-password';
+
+    const origGetEl = bootCtx.document.getElementById;
+    const origQsa = bootCtx.document.querySelectorAll;
+    bootCtx.document.getElementById = (id) => makePwEl(id);
+    bootCtx.document.querySelectorAll = (sel) => (sel === '[data-toggle-password="gate-password"]' ? [toggleBtnMock] : []);
+
+    new vm.Script(`
+      setPasswordFieldVisibility('gate-password', true);
+      globalThis.__pwTypeVisible = document.getElementById('gate-password').type;
+      globalThis.__pwAriaVisible = document.querySelectorAll('[data-toggle-password="gate-password"]')[0].getAttribute('aria-pressed');
+      resetAllPasswordVisibilities();
+      globalThis.__pwTypeHidden = document.getElementById('gate-password').type;
+      globalThis.__pwAriaHidden = document.querySelectorAll('[data-toggle-password="gate-password"]')[0].getAttribute('aria-pressed');
+      setAuthGateMode('register');
+      globalThis.__forgotInReg = document.getElementById('gate-forgot-btn').style.display;
+      setAuthGateMode('login');
+      globalThis.__forgotInLogin = document.getElementById('gate-forgot-btn').style.display;
+      showForgotPasswordStep('user@test.com');
+      globalThis.__forgotFormDisplay = document.getElementById('form-auth-forgot').style.display;
+      globalThis.__forgotEmailVal = document.getElementById('forgot-email').value;
+      showResetPasswordStep({ email: 'user@test.com', cooldownSeconds: 0 });
+      globalThis.__resetFormDisplay = document.getElementById('form-auth-reset').style.display;
+      globalThis.__resetTargetEmail = document.getElementById('reset-target-email').value;
+    `).runInContext(bootCtx);
+
+    bootCtx.document.getElementById = origGetEl;
+    bootCtx.document.querySelectorAll = origQsa;
+
+    assert.equal(bootCtx.__pwTypeVisible, 'text', 'Eye toggle must reveal password input as type="text"');
+    assert.equal(bootCtx.__pwAriaVisible, 'true', 'Eye toggle must set aria-pressed="true" when visible');
+    assert.equal(bootCtx.__pwTypeHidden, 'password', 'Resetting visibility must restore type="password"');
+    assert.equal(bootCtx.__pwAriaHidden, 'false', 'Resetting visibility must restore aria-pressed="false"');
+    assert.equal(bootCtx.__forgotInReg, 'none', 'Esqueci minha senha must hide in register mode');
+    assert.equal(bootCtx.__forgotInLogin, 'inline-block', 'Esqueci minha senha must show in login mode');
+    assert.equal(bootCtx.__forgotFormDisplay, 'flex', 'showForgotPasswordStep must display #form-auth-forgot');
+    assert.equal(bootCtx.__forgotEmailVal, 'user@test.com', 'showForgotPasswordStep must prefill e-mail');
+    assert.equal(bootCtx.__resetFormDisplay, 'flex', 'showResetPasswordStep must display #form-auth-reset');
+    assert.equal(bootCtx.__resetTargetEmail, 'user@test.com', 'showResetPasswordStep must bind target e-mail');
+    console.log('PASS [Feature 11] Forgot password (OTP reset + session revocation + purpose isolation) and password visibility eye toggles verified');
     process.exit(0);
   }
 }

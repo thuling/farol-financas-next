@@ -130,6 +130,14 @@ export const FAROL_SHELL_HTML = `<!-- ==================== TELA INICIAL DE LOGIN
             </span>
             <span class="auth-gate-sep"></span>
             <input type="password" id="gate-password" class="auth-gate-input" placeholder="Digite sua senha" autocomplete="current-password" required />
+            <button type="button" class="password-toggle-btn" data-toggle-password="gate-password" aria-label="Mostrar senha" aria-pressed="false" title="Mostrar senha">
+              <svg class="eye-icon-open" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+              </svg>
+              <svg class="eye-icon-closed" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/>
+              </svg>
+            </button>
           </div>
 
           <div class="auth-gate-meta-row" id="gate-meta-row">
@@ -137,7 +145,7 @@ export const FAROL_SHELL_HTML = `<!-- ==================== TELA INICIAL DE LOGIN
               <input type="checkbox" id="gate-remember" checked />
               <span>Lembrar de mim</span>
             </label>
-            <button type="button" class="auth-gate-link" id="gate-switch-inline">Criar conta grátis</button>
+            <button type="button" class="auth-gate-link" id="gate-forgot-btn">Esqueci minha senha</button>
           </div>
 
           <div id="gate-feedback" class="auth-gate-feedback" style="display:none;"></div>
@@ -149,6 +157,11 @@ export const FAROL_SHELL_HTML = `<!-- ==================== TELA INICIAL DE LOGIN
               </svg>
               <span id="gate-submit-label">ENTRAR</span>
             </button>
+          </div>
+
+          <div class="auth-gate-footer-switch">
+            <span id="gate-switch-prompt">Ainda não tem conta?</span>
+            <button type="button" class="auth-gate-link" id="gate-switch-inline">Criar conta grátis</button>
           </div>
         </form>
 
@@ -188,6 +201,112 @@ export const FAROL_SHELL_HTML = `<!-- ==================== TELA INICIAL DE LOGIN
             </button>
             <button type="button" class="auth-gate-link" id="btn-gate-otp-back" style="font-size:12px;">
               ← Voltar e alterar e-mail ou senha
+            </button>
+          </div>
+        </form>
+
+        <!-- Etapa 3A: Esqueci minha senha — Solicitar código OTP -->
+        <form id="form-auth-forgot" class="auth-gate-form" style="display:none;">
+          <div class="otp-step-header">
+            <span class="otp-badge-pill">Recuperação de Senha</span>
+            <p class="otp-step-desc">
+              Informe o e-mail da sua conta. Enviaremos um código de 6 dígitos para você criar uma nova senha.
+            </p>
+          </div>
+
+          <div class="auth-gate-input-box">
+            <span class="auth-gate-icon">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+              </svg>
+            </span>
+            <span class="auth-gate-sep"></span>
+            <input type="email" id="forgot-email" class="auth-gate-input" placeholder="Digite seu e-mail cadastrado" autocomplete="email" required />
+          </div>
+
+          <div id="forgot-feedback" class="auth-gate-feedback" style="display:none;"></div>
+
+          <div class="auth-gate-submit-wrap" style="flex-direction:column; gap:10px; align-items:center;">
+            <button type="submit" class="auth-gate-submit-btn" id="btn-gate-send-reset" style="width:100%;">
+              ENVIAR CÓDIGO DE RECUPERAÇÃO
+            </button>
+            <button type="button" class="auth-gate-link" id="btn-gate-forgot-back" style="font-size:12px;">
+              ← Voltar para o login
+            </button>
+          </div>
+        </form>
+
+        <!-- Etapa 3B: Esqueci minha senha — Validar OTP e definir nova senha -->
+        <form id="form-auth-reset" class="auth-gate-form" style="display:none;">
+          <input type="hidden" id="reset-target-email" value="" />
+
+          <div class="otp-step-header">
+            <span class="otp-badge-pill">Nova Senha · Código OTP</span>
+            <p class="otp-step-desc">
+              Digite o código de 6 dígitos enviado para <b id="reset-email-display">seu@email.com</b> e defina sua nova senha.
+            </p>
+          </div>
+
+          <div class="otp-digits-row" id="reset-otp-digits-row">
+            <input type="text" inputmode="numeric" maxlength="1" class="otp-digit-box reset-otp-digit-box" data-reset-otp-idx="0" autocomplete="one-time-code" aria-label="Dígito 1 do código de recuperação" />
+            <input type="text" inputmode="numeric" maxlength="1" class="otp-digit-box reset-otp-digit-box" data-reset-otp-idx="1" aria-label="Dígito 2 do código de recuperação" />
+            <input type="text" inputmode="numeric" maxlength="1" class="otp-digit-box reset-otp-digit-box" data-reset-otp-idx="2" aria-label="Dígito 3 do código de recuperação" />
+            <input type="text" inputmode="numeric" maxlength="1" class="otp-digit-box reset-otp-digit-box" data-reset-otp-idx="3" aria-label="Dígito 4 do código de recuperação" />
+            <input type="text" inputmode="numeric" maxlength="1" class="otp-digit-box reset-otp-digit-box" data-reset-otp-idx="4" aria-label="Dígito 5 do código de recuperação" />
+            <input type="text" inputmode="numeric" maxlength="1" class="otp-digit-box reset-otp-digit-box" data-reset-otp-idx="5" aria-label="Dígito 6 do código de recuperação" />
+          </div>
+
+          <div class="otp-timer-row">
+            <span style="font-size:11.5px; color:var(--text-muted);">Expira em 10 min · Máx. 3 tentativas</span>
+            <button type="button" class="auth-gate-link" id="btn-gate-resend-reset" disabled>
+              Reenviar código (60s)
+            </button>
+          </div>
+
+          <div class="auth-gate-input-box">
+            <span class="auth-gate-icon">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/>
+              </svg>
+            </span>
+            <span class="auth-gate-sep"></span>
+            <input type="password" id="reset-new-password" class="auth-gate-input" placeholder="Nova senha (mín. 8 caracteres)" autocomplete="new-password" minlength="8" required />
+            <button type="button" class="password-toggle-btn" data-toggle-password="reset-new-password" aria-label="Mostrar senha" aria-pressed="false" title="Mostrar senha">
+              <svg class="eye-icon-open" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+              </svg>
+              <svg class="eye-icon-closed" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/>
+              </svg>
+            </button>
+          </div>
+
+          <div class="auth-gate-input-box">
+            <span class="auth-gate-icon">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+            </span>
+            <span class="auth-gate-sep"></span>
+            <input type="password" id="reset-confirm-password" class="auth-gate-input" placeholder="Confirmar nova senha" autocomplete="new-password" minlength="8" required />
+            <button type="button" class="password-toggle-btn" data-toggle-password="reset-confirm-password" aria-label="Mostrar senha" aria-pressed="false" title="Mostrar senha">
+              <svg class="eye-icon-open" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+              </svg>
+              <svg class="eye-icon-closed" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/>
+              </svg>
+            </button>
+          </div>
+
+          <div id="reset-feedback" class="auth-gate-feedback" style="display:none;"></div>
+
+          <div class="auth-gate-submit-wrap" style="flex-direction:column; gap:10px; align-items:center;">
+            <button type="submit" class="auth-gate-submit-btn" id="btn-gate-confirm-reset" style="width:100%;">
+              ✓ REDEFINIR SENHA E ENTRAR
+            </button>
+            <button type="button" class="auth-gate-link" id="btn-gate-reset-back" style="font-size:12px;">
+              ← Voltar e alterar e-mail
             </button>
           </div>
         </form>
@@ -1645,12 +1764,23 @@ export const FAROL_SHELL_HTML = `<!-- ==================== TELA INICIAL DE LOGIN
                 </div>
 
                 <div class="form-group">
-                  <label class="form-label" for="auth-password">Senha</label>
+                  <div class="form-label-row">
+                    <label class="form-label" for="auth-password">Senha</label>
+                    <button type="button" class="auth-modal-forgot-link" id="btn-modal-auth-forgot">Esqueci minha senha</button>
+                  </div>
                   <div class="field-box">
                     <span class="field-prefix" aria-hidden="true">
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                     </span>
-                    <input type="password" id="auth-password" name="password" class="form-input" placeholder="Mínimo 4 caracteres" autocomplete="current-password" minlength="4" required />
+                    <input type="password" id="auth-password" name="password" class="form-input" placeholder="Digite sua senha" autocomplete="current-password" required />
+                    <button type="button" class="password-toggle-btn is-modal" data-toggle-password="auth-password" aria-label="Mostrar senha" aria-pressed="false" title="Mostrar senha">
+                      <svg class="eye-icon-open" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+                      </svg>
+                      <svg class="eye-icon-closed" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/>
+                      </svg>
+                    </button>
                   </div>
                 </div>
               </div>
