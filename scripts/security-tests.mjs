@@ -3,11 +3,106 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { createHmac } from 'node:crypto';
+import ts from 'typescript';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 
 function read(rel) {
   return fs.readFileSync(path.join(ROOT, rel), 'utf8');
+}
+
+function loadTsModule(relPath, moduleCache = new Map(), vmCtx = null) {
+  const absPath = path.resolve(ROOT, relPath);
+  if (moduleCache.has(absPath)) return moduleCache.get(absPath).exports;
+
+  const src = fs.readFileSync(absPath, 'utf8');
+  const { outputText } = ts.transpileModule(src, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+      esModuleInterop: true,
+    },
+    fileName: absPath,
+  });
+
+  const mod = { exports: {} };
+  moduleCache.set(absPath, mod);
+
+  const localRequire = (spec) => {
+    if (spec.startsWith('.')) {
+      const base = path.resolve(path.dirname(absPath), spec);
+      const candidates = [base, `${base}.ts`, `${base}.js`, path.join(base, 'index.ts')];
+      const found = candidates.find((p) => fs.existsSync(p) && fs.statSync(p).isFile());
+      if (!found) throw new Error(`Cannot resolve ${spec} from ${absPath}`);
+      return loadTsModule(path.relative(ROOT, found), moduleCache, vmCtx);
+    }
+    throw new Error(`Unexpected external import "${spec}" in pure module ${relPath}`);
+  };
+
+  if (vmCtx) {
+    const wrapper = vm.runInContext(
+      `(function(exports, require, module, __filename, __dirname) {\n${outputText}\n})`,
+      vmCtx
+    );
+    wrapper(mod.exports, localRequire, mod, absPath, path.dirname(absPath));
+  } else {
+    const fn = new Function('exports', 'require', 'module', '__filename', '__dirname', outputText);
+    fn(mod.exports, localRequire, mod, absPath, path.dirname(absPath));
+  }
+  return mod.exports;
+}
+
+const farolModuleCache = new Map();
+const farolFormatters = loadTsModule('src/lib/farol/formatters.ts', farolModuleCache);
+const farolInstallments = loadTsModule('src/lib/farol/installments.ts', farolModuleCache);
+const farolInvoiceParser = loadTsModule('src/lib/farol/invoice-parser.ts', farolModuleCache);
+const farolMetrics = loadTsModule('src/lib/farol/metrics.ts', farolModuleCache);
+const farolTour = loadTsModule('src/lib/farol/tour.ts', farolModuleCache);
+const farolAuth = loadTsModule('src/lib/farol/auth.ts', farolModuleCache);
+
+function attachFarolEngineGlobals(vmCtx) {
+  const ctxCache = new Map();
+  const fmt = loadTsModule('src/lib/farol/formatters.ts', ctxCache, vmCtx);
+  const inst = loadTsModule('src/lib/farol/installments.ts', ctxCache, vmCtx);
+  const inv = loadTsModule('src/lib/farol/invoice-parser.ts', ctxCache, vmCtx);
+  const met = loadTsModule('src/lib/farol/metrics.ts', ctxCache, vmCtx);
+  const tour = loadTsModule('src/lib/farol/tour.ts', ctxCache, vmCtx);
+  const auth = loadTsModule('src/lib/farol/auth.ts', ctxCache, vmCtx);
+  Object.assign(vmCtx, {
+    ...fmt,
+    ...inst,
+    matchCategoryByRulesPure: inv.matchCategoryByRules,
+    classifyMerchantLocallyPure: inv.classifyMerchantLocally,
+    cleanBrazilianAmountToFloat: inv.cleanBrazilianAmountToFloat,
+    extractInstallmentInfoFromTitle: inv.extractInstallmentInfoFromTitle,
+    detectEntryKind: inv.detectEntryKind,
+    parseInvoiceCSVOrOFXLocallyPure: inv.parseInvoiceCSVOrOFXLocally,
+    parseInvoiceMarkdownLocallyPure: inv.parseInvoiceMarkdownLocally,
+    getInvoiceMetaFromState: met.getInvoiceMetaFromState,
+    getInvoiceMonthForTransactionPure: met.getInvoiceMonthForTransaction,
+    getAccountBalanceCentsPure: met.getAccountBalanceCents,
+    getCategoriesSortedByUsagePure: met.getCategoriesSortedByUsage,
+    getMonthTransactionsPure: met.getMonthTransactions,
+    getCalendarMonthInfoPure: met.getCalendarMonthInfo,
+    isInternalTransferTx: met.isInternalTransferTx,
+    computeMonthMetricsPure: met.computeMonthMetrics,
+    computeVisaoGeralInvoiceSummaryPure: met.computeVisaoGeralInvoiceSummary,
+    buildMonthlyInsightsListPure: met.buildMonthlyInsightsList,
+    FAROL_PRODUCT_TOUR_STEPS: tour.FAROL_PRODUCT_TOUR_STEPS,
+    createProductTourController: tour.createProductTourController,
+    AUTH_SESSION_STORAGE_KEY: auth.AUTH_SESSION_STORAGE_KEY,
+    setPasswordFieldVisibility: auth.setPasswordFieldVisibility,
+    resetAllPasswordVisibilities: auth.resetAllPasswordVisibilities,
+    bindPasswordVisibilityToggles: auth.bindPasswordVisibilityToggles,
+    isLocalTourPreviewMode: auth.isLocalTourPreviewMode,
+    createAuthController: auth.createAuthController,
+  });
+}
+
+function toRunnableEngineScript(engineSrc) {
+  return engineSrc
+    .replace(/import\s+\{[\s\S]*?\}\s+from\s+['"]\.\/farol\/[^'"]+['"];?\s*/g, '')
+    .replace(/export\s+function\s+initFarolApp/, 'function initFarolApp');
 }
 
 // 1. Fail-closed session & auth configuration
@@ -161,8 +256,9 @@ function read(rel) {
   });
   ctx.globalThis = ctx;
   ctx.self = ctx;
+  attachFarolEngineGlobals(ctx);
 
-  const runnable = engineSrc.replace(/export\s+function\s+initFarolApp/, 'function initFarolApp');
+  const runnable = toRunnableEngineScript(engineSrc);
   new vm.Script(
     runnable +
       '\nglobalThis.__sec = { esc, safeCssColor, getCleanEmptyState, setState: s => { state = s; }, getState: () => state, getTxFilter: () => txFilter, setTxFilter: f => { txFilter = { ...txFilter, ...f }; }, getFilteredTransactions, getAccountBalanceCents, getInvoiceMonthForTransaction, computeMonthMetrics, isInternalTransferTx, sanitizeWorkspaceInstallments, hasDuplicateInstallmentTx, clampDayToYM, syncRecurrencesForMonth, renderVisaoGeral, renderTransacoesView, renderRecorrenciasView, renderFluxoCaixaView, renderFaturasView, renderCategoriasView, renderMetasView, renderPatrimonioView, renderContasView, renderInvoiceReviewTable, setReviewItems: arr => { invoiceReviewItems = arr; } };'
@@ -522,6 +618,7 @@ function read(rel) {
     });
     bootCtx.globalThis = bootCtx;
     bootCtx.self = bootCtx;
+    attachFarolEngineGlobals(bootCtx);
     new vm.Script(runnable + '\ninitFarolApp();\nglobalThis.__bootState = state;\nglobalThis.__ensureShape = ensureValidStateShape;').runInContext(bootCtx);
     assert.equal(bootCtx.__bootState.transactions.length, 2, 'Cold boot with pre-populated localStorage must sanitize duplicates without TDZ error');
 
@@ -652,6 +749,174 @@ function read(rel) {
     assert.equal(bootCtx.__resetFormDisplay, 'flex', 'showResetPasswordStep must display #form-auth-reset');
     assert.equal(bootCtx.__resetTargetEmail, 'user@test.com', 'showResetPasswordStep must bind target e-mail');
     console.log('PASS [Feature 11] Forgot password (OTP reset + session revocation + purpose isolation) and password visibility eye toggles verified');
+
+    // -------------------------------------------------------------------------
+    // 12. Direct Unit Tests for Modularized Stage 1 TS Modules (formatters, installments, invoice-parser)
+    // -------------------------------------------------------------------------
+    // 12a. formatters.ts
+    assert.equal(farolFormatters.toCents('R$ 1.234,56'), 123456);
+    assert.equal(farolFormatters.toCents('1234.56'), 123456);
+    assert.equal(farolFormatters.toCents(-42.5), -4250);
+    assert.equal(farolFormatters.fromCents(123456), 1234.56);
+    assert.equal(farolFormatters.fmtBRL(123456, true), '+R$ 1.234,56');
+    assert.equal(farolFormatters.fmtBRL(-5500), '-R$ 55,00');
+    assert.equal(farolFormatters.fmtDateBR('2026-11-28'), '28/11/2026');
+    assert.equal(farolFormatters.fmtMonthLabel('2026-11'), 'Novembro de 2026');
+    assert.equal(farolFormatters.addMonthsYM('2026-11', 2), '2027-01');
+    assert.equal(farolFormatters.monthDiffYM('2027-01', '2026-11'), 2);
+    assert.equal(farolFormatters.clampIsoDate('2026-02-31'), '2026-02-28');
+    assert.equal(farolFormatters.clampDayToYM('2024-02', 31), '2024-02-29');
+
+    // 12b. installments.ts shared single source of truth
+    const stateSanitizeSrc = read('src/lib/state-sanitize.ts');
+    assert.ok(stateSanitizeSrc.includes("from './farol/installments'"), 'state-sanitize.ts must reuse unified farol/installments module');
+    assert.ok(engineSrc.includes("from './farol/installments'"), 'farol-engine.js must import unified farol/installments module');
+    assert.ok(engineSrc.includes("from './farol/formatters'"), 'farol-engine.js must import unified farol/formatters module');
+    assert.ok(engineSrc.includes("from './farol/invoice-parser'"), 'farol-engine.js must import unified farol/invoice-parser module');
+
+    const instMeta = farolInstallments.parseInstallmentMeta({ description: 'Monitor 4K (3/12)' });
+    assert.deepEqual(instMeta, { baseTitle: 'Monitor 4K', normalizedBase: 'monitor 4k', index: 3, total: 12 });
+
+    // 12c. invoice-parser.ts (CSV, OFX, Markdown + local classifier)
+    const sampleCats = [
+      { id: 'cat-transporte', name: 'Transporte & Combustível', archived: false, rules: ['uber'] },
+      { id: 'cat-delivery', name: 'Delivery & Restaurantes', archived: false, rules: ['ifood'] },
+      { id: 'cat-compras', name: 'Compras & Vestuário', archived: false, rules: [] },
+    ];
+    assert.equal(farolInvoiceParser.cleanBrazilianAmountToFloat('R$ 1.946,15'), 1946.15);
+    assert.deepEqual(
+      farolInvoiceParser.extractInstallmentInfoFromTitle('Mercado Livre - Parcela 2/10'),
+      { cleanTitle: 'Mercado Livre', currentInstallment: 2, totalInstallments: 10 }
+    );
+    assert.equal(farolInvoiceParser.detectEntryKind('Pagamento recebido', -500, true), 'payment');
+    assert.equal(farolInvoiceParser.detectEntryKind('Estorno loja X', -100, true), 'refund');
+
+    const csvParsed = farolInvoiceParser.parseInvoiceCSVOrOFXLocally(
+      'date,title,amount\n2026-11-10,Uber Trip,28.50\n2026-11-12,Mercado Livre - Parcela 2/6,150.00\n2026-11-15,Pagamento recebido,-500.00',
+      'fatura.csv',
+      { categories: sampleCats, defaultYM: '2026-11' }
+    );
+    assert.equal(csvParsed.length, 3);
+    assert.equal(csvParsed[0].categoryId, 'cat-transporte');
+    assert.equal(csvParsed[1].currentInstallment, 2);
+    assert.equal(csvParsed[1].totalInstallments, 6);
+    assert.equal(csvParsed[2].entryKind, 'payment');
+    assert.equal(csvParsed[2].include, false);
+
+    const ofxParsed = farolInvoiceParser.parseInvoiceCSVOrOFXLocally(
+      '<OFX><STMTTRN><TRNAMT>-45.90<DTPOSTED>20261118<MEMO>IFOOD *BURGER</STMTTRN></OFX>',
+      'extrato.ofx',
+      { categories: sampleCats, defaultYM: '2026-11' }
+    );
+    assert.equal(ofxParsed.length, 1);
+    assert.equal(ofxParsed[0].date, '2026-11-18');
+    assert.equal(ofxParsed[0].categoryId, 'cat-delivery');
+    assert.equal(ofxParsed[0].amount, 45.9);
+
+    const mdParsed = farolInvoiceParser.parseInvoiceMarkdownLocally(
+      '# Fatura Novembro 2026\n| Data | Descrição | Valor |\n| --- | --- | --- |\n| 12/11/2026 | Amazon Prime (1/3) | R$ 99,90 |\n| Total da fatura | Total | R$ 99,90 |\n\n## Estornos\n- 14/11 Loja Teste -R$ 20,00',
+      { categories: sampleCats, defaultYM: '2026-11' }
+    );
+    assert.equal(mdParsed.length, 2, 'Summary Total line must be skipped in Markdown table');
+    assert.equal(mdParsed[0].cleanTitle, 'Amazon Prime');
+    assert.equal(mdParsed[0].totalInstallments, 3);
+    assert.equal(mdParsed[1].entryKind, 'refund');
+    assert.equal(mdParsed[1].date, '2026-11-14');
+    console.log('PASS [Feature 12] Direct unit tests for Stage 1 TS modules (formatters, installments, invoice-parser) verified');
+
+    // -------------------------------------------------------------------------
+    // 13. Direct Unit Tests for Stage 2 TS Modules (metrics, tour, auth)
+    // -------------------------------------------------------------------------
+    assert.ok(engineSrc.includes("from './farol/metrics'"), 'farol-engine.js must import farol/metrics');
+    assert.ok(engineSrc.includes("from './farol/tour'"), 'farol-engine.js must import farol/tour');
+    assert.ok(engineSrc.includes("from './farol/auth'"), 'farol-engine.js must import farol/auth');
+
+    // 13a. metrics.ts pure calculations
+    const cardAcc = { id: 'acc-c', name: 'Nubank', type: 'Conta + Cartão', initialBalanceCents: 100000, limitCents: 200000, closingDay: 5, dueDay: 12 };
+    assert.equal(
+      farolMetrics.getInvoiceMonthForTransaction({ date: '2026-11-04', method: 'Cartão de Crédito' }, cardAcc),
+      '2026-11'
+    );
+    assert.equal(
+      farolMetrics.getInvoiceMonthForTransaction({ date: '2026-11-06', method: 'Cartão de Crédito' }, cardAcc),
+      '2026-12'
+    );
+    assert.equal(
+      farolMetrics.getAccountBalanceCents(cardAcc, [
+        { accountId: 'acc-c', type: 'income', amountCents: 50000, method: 'Pix' },
+        { accountId: 'acc-c', type: 'expense', amountCents: 20000, method: 'Pix' },
+        { accountId: 'acc-c', type: 'expense', amountCents: 80000, method: 'Cartão de Crédito' },
+      ]),
+      130000,
+      'Card credit expense must not deduct cash account balance'
+    );
+
+    const metricsState = {
+      selectedMonth: '2026-11',
+      profile: { monthlyBudgetCents: 200000, emergencyGoalCents: 1000000 },
+      categories: [
+        { id: 'cat-mercado', name: 'Mercado', color: '#38b6ff', budgetCents: 60000, archived: false },
+        { id: 'cat-lazer', name: 'Lazer', color: '#ec4899', budgetCents: 20000, archived: false },
+      ],
+      accounts: [cardAcc],
+      transactions: [
+        { id: 'm1', type: 'income', amountCents: 500000, categoryId: 'cat-receita', accountId: 'acc-c', date: '2026-11-05', method: 'Pix' },
+        { id: 'm2', type: 'expense', amountCents: 120000, categoryId: 'cat-mercado', accountId: 'acc-c', date: '2026-11-04', method: 'Cartão de Crédito' },
+        { id: 'm3', type: 'expense', amountCents: 30000, categoryId: 'cat-lazer', accountId: 'acc-c', date: '2026-11-04', method: 'Pix' },
+        { id: 'm4', type: 'expense', amountCents: 50000, isAssetTransfer: true, categoryId: 'cat-invest', accountId: 'acc-c', date: '2026-11-06', method: 'Aporte / Investimento' },
+      ],
+      recurrences: [
+        { id: 'r1', active: true, type: 'expense', amountCents: 10000 },
+      ],
+      assets: [
+        { id: 'a1', category: 'Renda Fixa (CDB)', liquidity: 'Diária', amountCents: 500000, weeklyDeltaCents: 1200 },
+        { id: 'a2', category: 'Cripto', liquidity: 'Diária', amountCents: 300000, weeklyDeltaCents: -500 },
+      ],
+      invoiceMeta: {},
+    };
+    const mRes = farolMetrics.computeMonthMetrics(metricsState, '2026-11', '2026-11-10');
+    assert.equal(mRes.incomeCents, 500000);
+    assert.equal(mRes.expenseCents, 150000, 'Internal asset transfer must be excluded from operational expenses');
+    assert.equal(mRes.partialResultCents, 350000);
+    assert.equal(mRes.distribution[0].catId, 'cat-mercado');
+    assert.equal(mRes.distribution[0].pct, 80);
+    assert.equal(mRes.totalInvestmentsCents, 800000);
+    assert.equal(mRes.reserveCurrentCents, 500000, 'Volatile Cripto must be excluded from emergency reserve');
+    assert.equal(mRes.reservePct, 50);
+
+    const invSum = farolMetrics.computeVisaoGeralInvoiceSummary(metricsState, mRes, '2026-11-10');
+    assert.equal(invSum.totalFaturasOpenCents, 120000);
+    assert.equal(invSum.limitUsedPct, 60);
+    assert.equal(invSum.dueBadgeText, 'Vence em 2 dias · 12/11');
+
+    const insights = farolMetrics.buildMonthlyInsightsList(metricsState, mRes, {
+      alert: '', info: '', shieldOk: '', repeat: '', target: '', trendUp: '', trendDown: '',
+    });
+    assert.ok(insights.length >= 4);
+    assert.ok(insights[0].title.includes('Mercado concentra 80%'));
+    assert.ok(insights[1].title.includes('Orçamento livre:'));
+
+    // 13b. tour.ts pure controller checks
+    assert.equal(farolTour.FAROL_PRODUCT_TOUR_STEPS.length, 9);
+    const tourState = { productTourCompleted: false, currentTab: 'visao-geral' };
+    let tourSaved = 0;
+    const tourCtrl = farolTour.createProductTourController({
+      getState: () => tourState,
+      getActiveUserId: () => 'u-test',
+      saveState: () => { tourSaved++; },
+      renderApp: () => {},
+    });
+    assert.equal(tourCtrl.getProductTourStorageKey(), 'farol_product_tour_done_v1_u-test');
+    assert.equal(tourCtrl.hasCompletedProductTour(), false);
+    tourCtrl.markProductTourCompleted();
+    assert.equal(tourCtrl.hasCompletedProductTour(), true);
+    assert.equal(tourSaved, 1);
+
+    // 13c. auth.ts export surface check
+    assert.equal(farolAuth.AUTH_SESSION_STORAGE_KEY, 'farol_auth_session_v1');
+    assert.equal(typeof farolAuth.createAuthController, 'function');
+    assert.equal(typeof farolAuth.setPasswordFieldVisibility, 'function');
+    console.log('PASS [Feature 13] Direct unit tests for Stage 2 TS modules (metrics, tour, auth) verified');
     process.exit(0);
   }
 }
